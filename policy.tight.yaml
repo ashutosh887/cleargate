@@ -1,0 +1,93 @@
+# ClearGate policy: payments-bugfix team.
+# Read top to bottom. The first rule that matches a call decides it.
+# Anything no rule allows is blocked (zero standing privilege).
+
+policy: payments-bugfix-tight
+version: 2
+
+task:
+  name: Fix one payments-api bug from its issue
+  intent: read the issue and logs, read payments data, fix on a branch, merge only with the engineer's approval, report to the incident channel
+
+# NARROW: the only tools the agents can see once the task opens.
+# AgntID narrows by tool name at task open (filter_tools_for_task); arguments are
+# never rewritten, they are allowed or blocked by the rules below.
+visible_tools:
+  - github.get_issue
+  - github.get_job_logs
+  - github.get_file_contents
+  - github.create_branch
+  - github.create_or_update_file
+  - github.create_pull_request
+  - github.merge_pull_request
+  - postgres.pg_query
+  - slack.slack_post_message
+
+# Constraints carried across each hand-off from the orchestrator to a sub-agent.
+delegations:
+  triage:   [read-only]
+  database: [read-only]
+  fix:      []
+  comms:    []
+
+# Tools that change state. A read-only delegation can never call these.
+write_tools:
+  - github.create_or_update_file
+  - github.delete_file
+  - github.push_files
+  - github.create_branch
+  - github.create_pull_request
+  - github.merge_pull_request
+  - github.update_issue
+
+rules:
+  - id: triage-reads-issue-and-logs
+    agents: [triage]
+    tools: [github.get_issue, github.get_job_logs, github.get_file_contents]
+    verb: ALLOW
+
+  - id: never-write-to-main
+    tools: [github.create_or_update_file, github.delete_file, github.push_files]
+    where: { branch: { in: [main, master] } }
+    verb: BLOCK
+    reason: main only changes through a reviewed merge
+
+  - id: fix-works-on-a-branch
+    agents: [fix]
+    tools: [github.get_file_contents, github.create_branch, github.create_or_update_file, github.create_pull_request]
+    verb: ALLOW
+
+  - id: merge-needs-the-engineer
+    agents: [fix]
+    tools: [github.merge_pull_request]
+    verb: ESCALATE
+    approver: platform-engineer
+    reason: a merge to main needs a human, bound to these exact arguments
+
+  - id: database-reads-payments-schema-only
+    agents: [database]
+    tools: [postgres.pg_query]
+    where:
+      sql: { matches: '(?is)^\s*select\b[^;]*\bfrom\s+payments\.[a-z_]+[^;]*;?\s*$' }
+      max_rows: { max: 50 }
+    verb: ALLOW
+    reason: one SELECT on payments.*, at most 50 rows
+
+  - id: comms-posts-to-incident-channels
+    agents: [comms]
+    tools: [slack.slack_post_message]
+    where: { channel: { in: ["#inc-4471"] } }
+    verb: ALLOW
+
+default:
+  verb: BLOCK
+  reason: no rule in this policy allows the call
+
+# Handed to the AgntID runtime tomorrow: how ClearGate's tool names map to the
+# runtime's MCP tool names, and which correlation argument names it expects.
+agntid:
+  agent_id: payments-bugfix-team:v1
+  task_argument: _task_id
+  delegation_argument: _delegation_id
+  approval_argument: agntid_approval
+  tool_names: {}
