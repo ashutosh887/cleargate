@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.cleargate/
+records/*.jsonl
+!records/.gitkeep
+
+# private prep notes and internal docs
+PROJECT.md
+AGNTID_SDK_NOTES.md
+submission/
+agntid-context*.md
+agntid-docs*
+records/*.json
+*.log
+.DS_Store
+.pytest_cache/
+*.egg-info/
+dist/
+build/
