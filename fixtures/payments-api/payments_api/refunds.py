@@ -14,17 +14,24 @@ class RefundLedger:
 
     charges: dict[str, int] = field(default_factory=dict)
     refunds: list[dict] = field(default_factory=list)
+    by_key: dict[str, dict] = field(default_factory=dict)
 
     def refunded(self, order_id: str) -> int:
         return sum(r["amount_minor"] for r in self.refunds if r["order_id"] == order_id)
 
     def issue(self, order_id: str, requested: float, idempotency_key: str) -> dict:
         amount = to_minor_units(requested)
+        seen = self.by_key.get(idempotency_key)
+        if seen is not None:
+            if seen["order_id"] != order_id or seen["amount_minor"] != amount:
+                raise ValueError("idempotency key reused with different parameters")
+            return seen
         if amount <= 0:
             raise ValueError("refund must be positive")
-        if amount > self.charges[order_id]:
+        if self.refunded(order_id) + amount > self.charges[order_id]:
             raise ValueError("refund exceeds charge")
         refund = {"id": len(self.refunds) + 1, "order_id": order_id, "amount_minor": amount,
                   "idempotency_key": idempotency_key}
         self.refunds.append(refund)
+        self.by_key[idempotency_key] = refund
         return refund
