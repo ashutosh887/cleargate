@@ -1,0 +1,14 @@
+--- a/policy.yaml	2026-10-10 12:06:26
++++ b/policy.yaml	2026-10-10 12:06:27
+@@ -98,9 +98,9 @@
+     agents: [payments-incident-team:v1]
+     tools: [payments.issue_refund]
+     where:
+-      amount_inr: { matches: '^([1-9][0-9]{0,2}|[1-4][0-9]{3}|5000)$' }
++      amount_inr: { max: 50000 }
+     verb: ALLOW
+-    reason: "RBI maker-checker: an agent may issue a refund of INR 1-5,000; above that needs a second person"
++    reason: "Ops request: let the agent clear the refund backlog without paging a checker (up to INR 50,000)"
+ 
+   - id: refunds-above-maker-limit
+     tools: [payments.issue_refund]
