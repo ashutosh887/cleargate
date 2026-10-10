@@ -575,13 +575,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="cleargate.policywriter", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     pp = sub.add_parser("propose", help="propose a least-privilege AgntID policy from a signed run record")
-    pp.add_argument("--record", type=Path, help="gated or stock record (default: latest gated)")
+    pp.add_argument("--record", type=Path, help="gated or stock record (default: latest incident gated record)")
     pp.add_argument("--attacks", type=Path, help="attack-suite output records/attacks-<ts>.json")
     pp.add_argument("--out", type=Path, help="output prefix, e.g. policies/proposed-<ts>")
     pp.add_argument("--policy", type=Path, default=ROOT / "policy.yaml")
     pp.add_argument("--offline", action="store_true", help="skip live list_tools; use the static maps")
     args = ap.parse_args(argv)
-    record = args.record or max((ROOT / "records").glob("*-gated.jsonl"), default=None)
+    from cleargate.replay import latest_incident_record
+
+    record = args.record or latest_incident_record(ROOT / "records")
     if record is None:
         raise SystemExit("no record; run `cleargate check --stub --quiet` first")
     doc = run_propose(record, args.attacks, args.out, args.policy, args.offline)

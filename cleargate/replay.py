@@ -34,12 +34,18 @@ class Attempt:
         return (self.agent, self.tool, self.args_digest, self.ordinal)
 
 
+def latest_incident_record(records_dir: Path, mode: str = "gated") -> Path | None:
+    """Newest incident run record. Incident runs are named <timestamp>-<id>-<mode>.jsonl;
+    bank-* and other prefixed records are skipped."""
+    found = sorted(p for p in records_dir.glob(f"*-{mode}.jsonl") if p.name[:1].isdigit())
+    return found[-1] if found else None
+
+
 def latest_record(settings: Settings, mode: str = "gated") -> Path:
-    # Incident runs are named <timestamp>-<id>-<mode>.jsonl; skip bank-* and other prefixed records.
-    found = sorted(p for p in settings.records_dir.glob(f"*-{mode}.jsonl") if p.name[:1].isdigit())
-    if not found:
+    found = latest_incident_record(settings.records_dir, mode)
+    if found is None:
         raise SystemExit(f"no {mode} record in {settings.records_dir}; run `cleargate check` first")
-    return found[-1]
+    return found
 
 
 def attempts_from(entries: list[dict[str, Any]]) -> list[Attempt]:
