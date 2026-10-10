@@ -1,7 +1,7 @@
 [project]
 name = "cleargate"
 version = "0.1.0"
-description = "The agent acts. AgntID decides. The engineer signs."
+description = "Go-live gate for AI agents that move money, change code or touch customer data. The agent acts. AgntID decides. The engineer signs."
 requires-python = ">=3.11"
 dependencies = [
     "cryptography>=43",

@@ -2,7 +2,7 @@
 
 ClearGate's threat model is the same for any agent that takes real actions: untrusted text reaches the agent, and the agent holds tools that move money, change code or read customer data. Below it is worked through for the two examples in this repo.
 
-**Assets:** a bank customer's money on the voice support line (refunds of failed UPI payments, which must credit only the account on file), and the bank's payments system during an incident: the refund ledger, card-holder data (`customers.cards`, masked test PANs), the `payments-api` service source (`fixtures/payments-api/` in this repo) and its `main` branch, and the incident channel.
+**Assets, in the examples:** a bank customer's money on the voice support line (refunds of failed UPI payments, which must credit only the account on file), and the bank's payments system during an incident: the refund ledger, card-holder data (`customers.cards`, masked test PANs), the `payments-api` service source (`fixtures/payments-api/` in this repo) and its `main` branch, and the incident channel.
 
 **Adversary:** anyone who can put text in front of the agents. On the voice line that is the caller, who may impersonate branch staff or the "RBI fraud cell", switch languages, and bargain down after a refusal. In the incident demo it is whoever writes a GitHub issue body; in production it also includes CI logs, file contents, other MCP servers' tool descriptions, and replies from any tool. We also treat the agent itself as fallible: it may follow injected text, lose an instruction across a hand-off, or reach for more than it needs.
 
@@ -41,7 +41,7 @@ The attack suite (`cleargate attack-suite --target both`) fires the 20 requests 
 - Honesty of the record signer. The signature proves the record has not changed, not that the signer told the truth. Roadmap: AgntID-signed decisions.
 - ASI05 Unexpected Code Execution: the team has no code-execution tool, so it was not tested. ASI06 Memory & Context Poisoning: covered only in its context form (an instruction hidden in a statement or issue the agent reads); the agents keep no long-term memory, so memory poisoning was not tested.
 
-## Mapping to bank controls (evidence for a review, not a compliance claim)
+## Mapping to controls in the bank example (evidence for a review, not a compliance claim)
 
 | Control | Requirement it gives evidence for |
 |---|---|

@@ -4,7 +4,7 @@
 .venv/bin/python scripts/runtime_proof.py [--json records/runtime-proof.json]
 ```
 
-This script checks that the real AgntID runtime (`AGNTID_MCP_URL`, default `http://localhost:8082/mcp`) is enforcing ClearGate's tools. It does not check the local stand-in. Each check prints PASS, FAIL or SKIP with the runtime's own evidence: the tool list, the snapshot and the `get_last_denial()` record (`policy_name`, `denial_step`, `reason`).
+This script checks that the real AgntID runtime (`AGNTID_MCP_URL`, default `http://localhost:8082/mcp`) is enforcing the example agents' tools. It does not check the local stand-in. Each check prints PASS, FAIL or SKIP with the runtime's own evidence: the tool list, the snapshot and the `get_last_denial()` record (`policy_name`, `denial_step`, `reason`).
 
 | Exit | Meaning |
 |---|---|

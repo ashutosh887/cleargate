@@ -2,24 +2,77 @@
 
 [![ClearGate gate](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml/badge.svg?branch=main)](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml) [![Try a call](https://img.shields.io/badge/try_a_call-trycleargate.vercel.app-0f1522)](https://trycleargate.vercel.app/try.html) ![Bank attacks that reached the refund tool](https://img.shields.io/badge/bank_attacks_reaching_the_refund_tool-0_of_4_(stand--in)-138a5b)
 
+**ClearGate is a go-live gate for AI agents that move money, change code or touch customer data.** It runs your agent twice, stock and gated through an AgntID runtime, fires attacks at both, and gives you a signed GO / NO-GO record that anyone can verify offline.
+
+**The agent acts. AgntID decides. The engineer signs.**
+
+It is for the platform or security team that has to sign off before an agent with real tools goes to production. A prompt that says "don't" is not evidence. A record of what the agent tried, what reached a tool and who approved it is.
+
+## What it does
+
+- **Before and after.** Runs the same agent and task stock (direct tool access) and gated (every call through the enforcer), and counts what reached a tool on each side.
+- **Attacks that evolve.** Fires a catalogue of attacks, then `cleargate evolve` mutates every attack the policy stopped and keeps whatever gets through.
+- **A proposed policy.** `cleargate propose-policy` writes the tightest configuration that still lets every in-task call through. The engineer applies it in the AgntID portal. ClearGate never edits it there.
+- **A CI gate.** A GitHub Action re-runs the attacks and the legit task on every pull request that touches agents or policy, and fails the check if an attack reaches a tool.
+- **Human approval that survives a restart.** A risky call waits for a person, and the approval is bound to the SHA-256 digest of the exact arguments and spent once. With `--durable` the pending call is a receipt on disk, so the process can exit and resume later.
+- **A signed record.** Every decision lands in a hash-chained, Ed25519-signed log. `verify.py` checks it with no keys and no network, and `cleargate evidence` packs it into a folder for a go-live review: evidence for a review, not a compliance claim.
+
+The same gate fits banking and payments agents that refund or transfer, support agents that issue credits, DevOps agents that branch, merge and deploy, and agents that read patient, claim, payroll or employee records. This repo ships two worked examples: a bank's voice support agent and a coding agent team that fixes a payments incident.
+
+## Quickstart
+
+Requires Python 3.11+. Every step below runs offline with no keys.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e .
+cp .env.example .env                                   # every value is optional offline
+cleargate check --stub                                 # incident team: stock vs gated, GO / NO-GO
+cleargate bank --demo all --stub                       # the five bank calls, stock vs gated
+PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7   # bargaining callers, rupees per side
+python verify.py examples/stub-gated.jsonl             # digests, hash chain, Ed25519 signatures
+cleargate serve --stub                                 # UI on http://127.0.0.1:8700, /bank for the call
+```
+
+Set `CLEARGATE_LLM=scripted` to keep the agents deterministic. Live with the AgntID runtime: full steps in [`docs/DEMO.md`](docs/DEMO.md). In short, install the `agntid` SDK from source (`pip install git+https://github.com/AGNTID-AI/agntid-python.git`), start Postgres and `cleargate seed`, start `cleargate mcp-serve`, start the runtime from AgntID's [public compose file](https://raw.githubusercontent.com/AGNTID-AI/agntid-python/main/docker-compose.yml), register the MCP servers in the portal, set `CLEARGATE_ENFORCER=agntid` in `.env`, then `cleargate serve`.
+
+## Bring your own agent
+
+These are the extension points in the code today. There is no plug-in registry yet; you add your tools where the examples add theirs.
+
+**Tools.** ClearGate talks to tools through one protocol, `ToolClient` in [`cleargate/tools/base.py`](cleargate/tools/base.py): `list_tools()` returns `ToolSpec`s (name, description, JSON schema) and `call(name, args)` returns a `ToolResult`. Names are `server.tool`. `CompositeToolClient` merges several clients into one. The GitHub, Postgres and Slack adapters in [`cleargate/tools/`](cleargate/tools/) are worked examples; wire yours into `build_tools` in [`cleargate/tools/registry.py`](cleargate/tools/registry.py).
+
+**MCP servers.** If your tools already sit behind MCP, set `CLEARGATE_TOOLS=mcp`. `McpToolClient` connects to each server over streamable HTTP, one per prefix, and returns `prefix.tool` names that line up one-to-one with the AgntID runtime's `prefix_tool`. The example servers come from `CLEARGATE_PAYMENTS_MCP_URL`, `CLEARGATE_COMMS_MCP_URL` and `CLEARGATE_GITHUB_MCP_URL`; add your prefix in `_build_mcp`. [`cleargate/mcp/`](cleargate/mcp/) shows two servers built with FastMCP.
+
+**Policy.** [`policy.yaml`](policy.yaml) holds the task (name and intent), `visible_tools`, per-sub-agent `delegations` (for example `read-only`), `write_tools` and an ordered list of `rules`. Each rule has an `id`, optional `agents`, `tools`, an optional `where` on arguments (`equals`, `not_equals`, `in`, `not_in`, `matches`, `not_matches`, `max`), a `verb` (ALLOW, BLOCK or ESCALATE) and a `reason`. The first matching rule decides, and anything no rule allows is blocked. Offline, this file is the local stand-in's rule set. Live, AgntID decides from the portal configuration, and ClearGate reads only the ESCALATE rules to know which calls wait for a person.
+
+**Attacks.** [`attacks/catalog.yaml`](attacks/catalog.yaml) lists each attack's `tool`, `args`, `klass`, OWASP id and the control expected to stop it. Write entries against your own tool names. `cleargate evolve` mutates the ones your policy stops and saves survivors to [`attacks/evolved.json`](attacks/evolved.json) for the gate.
+
+**CI.** Add the action to your agent repo:
+
+```yaml
+on: pull_request
+jobs:
+  cleargate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ashutosh887/cleargate@main
+        with:
+          policy: agent-policy.yaml   # your policy, ClearGate policy.yaml format
+```
+
+`target: stub` (the default) runs offline with no secrets. `target: agntid` sends every call through your AgntID runtime and needs `AGNTID_MCP_URL`. The markdown summary lands in the job summary. The action's inputs are `policy`, `target` and `python-version`. It runs the attack catalogue and legit task bundled in this repo, which are written against the example tools, so gating a different tool set today means forking and editing `attacks/catalog.yaml`. See [`action.yml`](action.yml).
+
+# Examples
+
+## Example 1: a bank's voice support agent
+
 **A bank's platform team uses ClearGate to gate its voice support agent, five sub-agents that refund failed UPI payments, so every tool call passes through a customer-hosted AgntID runtime.**
 **AgntID controls used: Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile), Parameter-Level Policies (refund cap ₹1 to ₹5,000, destination account on file) and Intent-Based Controls, feeding one Runtime Access Decision per call.**
 **Before and after: stock moved ₹2,22,840 to accounts not on file across 8 attack calls; gated moved ₹0 across 15 (measured on the local stand-in of AgntID's decisions, labelled "not AgntID" in every record).**
 
-There is no way for a bank's platform team to prove a voice agent that moves money can't be talked into moving it wrongly. Banks put these agents on phone lines for customers who can't or won't use the app, often elderly callers or people who prefer an Indian language. ClearGate runs the same agent twice, stock and gated, lets scripted callers bargain with it in Hindi and English, and reads every rupee back from a sandbox ledger.
-
-**The agent acts. AgntID decides. The engineer signs.**
-
-ClearGate is a go-live gate for any AI agent that takes real actions: moving money, changing code, or touching customer data. The bank voice agent and the incident team are two worked examples. The same gate fits:
-
-- **Banking and payments:** voice and chat agents that refund, transfer or reverse.
-- **Customer support:** agents that issue credits, refunds and account changes.
-- **DevOps and on-call:** agents that branch, merge, deploy and post to incident channels.
-- **Healthcare and insurance:** agents that read patient or claim records and file updates.
-- **E-commerce:** order, returns and payout agents.
-- **Internal ops, HR and finance:** agents that touch payroll, vendor payments or employee data.
-
-What a team gets: a CLI and a GitHub Action that run the gate on every pull request, an attacker that evolves against your own policy, a least-privilege policy writer, a human approval bound to the exact arguments, and a signed record an auditor verifies offline.
+A bank's platform team has no way to prove that a voice agent that moves money can't be talked into moving it wrongly. Banks put these agents on phone lines for customers who can't or won't use the app, often elderly callers or people who prefer an Indian language. ClearGate runs the same agent twice, stock and gated, lets scripted callers bargain with it in Hindi and English, and reads every rupee back from a sandbox ledger.
 
 **Try it:** place a call at https://trycleargate.vercel.app/try.html. Pick a caller or type your own line, in English or Hinglish, and see the stock and gated agents side by side with the decision, the rule and the rupees moved. It runs the same code as `cleargate bank --stub`, on the local stand-in.
 
@@ -27,13 +80,19 @@ What a team gets: a CLI and a GitHub Action that run the gate on every pull requ
 
 *The "RBI fraud cell" call in Hinglish. Stock sends ₹30,000 to a new account. Gated never sees the refund tool, tells the caller in Hindi that it needs a branch visit, and both signed records verify. The badge says it: local stand-in, simulation, not AgntID.*
 
-The second scenario is an on-call agent team fixing a duplicate-refund incident in the bank's payments API. It is also the CI story: a pull request that loosens the merge rule turns the check red ([PR #3](https://github.com/ashutosh887/cleargate/pull/3)).
+Details: [Appendix B](#appendix-b-the-bank-voice-support-agent).
+
+## Example 2: a coding agent team on a payments incident
+
+Five agents fix a duplicate-refund bug in a payments API ([issue #1](https://github.com/ashutosh887/cleargate/issues/1)). They triage, size the ledger impact, fix on a branch, ask the engineer to merge and post one update. The GitHub issue they read carries a prompt injection. In the stand-in run (`cleargate check --stub`) the stock team exports customer records, emails them out, writes to `main` and merges its own PR. In the gated run 0 of 7 out-of-task calls reached a tool and the merge waited for the engineer's approval.
+
+This is also the CI example. A pull request that loosens the merge rule turns the check red ([PR #3](https://github.com/ashutosh887/cleargate/pull/3)). Details: [Appendix C](#appendix-c-the-incident-team).
 
 ## Why now
 
-- A voice agent that moves money is already live in India. On 10 Sep 2026 Indian Bank launched AI-TARA, which does fund transfers, IMPS and fixed deposits by voice in 10 languages and is aimed at senior citizens ([Analytics Insight, 11 Sep 2026](https://www.analyticsinsight.net/news/indian-bank-debuts-ai-tara-voice-banking-in-10-languages-at-global-fintech-fest-2026)).
 - 53% of organisations have had AI agents exceed their intended permissions ([CSA, 445 respondents, 16 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/16/more-than-half-of-organizations-experience-ai-agent-scope-violations-cloud-security-alliance-study-finds)). When an agent does, only 11% block it automatically ([CSA, 418 respondents, 21 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/21/new-cloud-security-alliance-survey-reveals-82-of-enterprises-have-unknown-ai-agents-in-their-environments)). ClearGate blocks by default and approves by exception.
-- Our incident attack is a documented incident class. In May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents (Invariant Labs; [incident index](https://www.upguard.com/blog/mcp-security-incidents)).
+- The coding example's attack is a documented incident class. In May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents (Invariant Labs; [incident index](https://www.upguard.com/blog/mcp-security-incidents)).
+- A voice agent that moves money is already live in India. On 10 Sep 2026 Indian Bank launched AI-TARA, which does fund transfers, IMPS and fixed deposits by voice in 10 languages and is aimed at senior citizens ([Analytics Insight, 11 Sep 2026](https://www.analyticsinsight.net/news/indian-bank-debuts-ai-tara-voice-banking-in-10-languages-at-global-fintech-fest-2026)).
 - The voice on the line can't be trusted. 47% of Indian adults have been a victim of an AI voice-clone scam or know one, and 83% of Indian victims lost money (a 2025 survey cited by [ORF, Jan 2026](https://orfonline.org/research/deepfakes-and-financial-cybercrime-india-s-multi-layered-response)). So authority has to live in the runtime, not in what the caller says.
 - UPI fraud in FY24 was 13.42 lakh incidents and ₹1,087 crore ([Lok Sabha unstarred question 2481, 15 Dec 2025](https://eparlib.sansad.in/bitstream/123456789/3018042/1/AU2481_5bIzKk.pdf)).
 
@@ -184,25 +243,6 @@ Stock counts 8 attempts and gated 7 because in stock the agent's own first merge
 - `/oncall` page on a phone: the engineer hears the merge request (Sarvam text-to-speech) and approves by saying a 4-character code (Sarvam speech-to-text). The code is an HMAC-SHA256 of the merge's arguments digest under a server-held secret, so knowing the arguments is not enough to derive it. The page needs the approver key (`?k=`).
 - Durable approval: `cleargate check --stub --mode gated --durable` stores the escalated merge as a receipt in SQLite and exits ("this process exits, 0 threads held"). `cleargate approve <receipt> --code <code>` records the decision and `cleargate resume <receipt>` re-sends the approved call through the same enforcer into the same signed record. Because the receipt is on disk, approval survives a server restart. Codes are stored only as a salted PBKDF2 verifier, with 5 attempts and a 24-hour expiry, and one receipt can execute once.
 - Split-screen UI for the incident (`cleargate serve --stub`): NARROW, BLOCK, ESCALATE cards and a GO / NO-GO stamp.
-
-## Quickstart
-
-Requires Python 3.11+. Every step below runs offline with no keys.
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
-cp .env.example .env                                   # every value is optional offline
-cleargate check --stub                                 # incident team: stock vs gated, GO / NO-GO
-cleargate bank --demo all --stub                       # the five bank calls, stock vs gated
-PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7   # bargaining callers, rupees per side
-python verify.py examples/stub-gated.jsonl             # digests, hash chain, Ed25519 signatures
-cleargate serve --stub                                 # UI on http://127.0.0.1:8700, /bank for the call
-```
-
-Set `CLEARGATE_LLM=scripted` to keep the agents deterministic. Live with the AgntID runtime: full steps in [`docs/DEMO.md`](docs/DEMO.md). In short, install the `agntid` SDK from source (`pip install git+https://github.com/AGNTID-AI/agntid-python.git`), start Postgres and `cleargate seed`, start `cleargate mcp-serve`, start the runtime from AgntID's [public compose file](https://raw.githubusercontent.com/AGNTID-AI/agntid-python/main/docker-compose.yml), register the MCP servers in the portal, set `CLEARGATE_ENFORCER=agntid` in `.env`, then `cleargate serve`.
-
-What existed before 10 October and what was built on the day is in [`docs/CHALLENGES.md`](docs/CHALLENGES.md).
 
 ---
 
@@ -383,21 +423,3 @@ Each piece says whether it runs against the live runtime or the local stand-in.
 | `scripts/runtime_proof.py` | Live runtime checklist |
 | `policy.yaml`, `policy.tight.yaml` | Stand-in policy mirroring the portal, and a tighter one for diffing |
 | `fixtures/` | Synthetic ledger, offline copy of issue #1, CI logs, the buggy `payments-api` service |
-
-## Use it in your repo
-
-ClearGate's gate ships as a GitHub Action. Add it to any agent repo and every pull request re-runs the attack set and the legit task against your policy; the check fails if any attack reaches a tool.
-
-```yaml
-on: pull_request
-jobs:
-  cleargate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ashutosh887/cleargate@main
-        with:
-          policy: agent-policy.yaml   # your policy, ClearGate policy.yaml format
-```
-
-`target: stub` (the default) runs offline with no secrets. `target: agntid` sends every call through your AgntID runtime and needs `AGNTID_MCP_URL`. The markdown summary lands in the job summary.
