@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearGate: on-call agents, gated by AgntID</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d12; --panel: #121821; --panel2: #18202b; --line: #263040; --text: #f1f4f8; --muted: #9aa6b6; --dim: #6b7787;
+    --allow: #34d17b; --narrow: #4f9dff; --block: #ff5a5a; --escalate: #ffb020; --unguarded: #7c8696;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+         display: flex; flex-direction: column; overflow: hidden; }
+  button { background: var(--panel2); color: var(--text); border: 1px solid #36435a; border-radius: 8px; padding: 9px 16px;
+           font: 600 16px/1.2 inherit; font-family: inherit; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--narrow); border-color: var(--narrow); color: #031025; }
+  button:disabled { opacity: .45; cursor: default; }
+  kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+
+  header { display: flex; align-items: center; gap: 18px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 26px; margin: 0; font-weight: 800; letter-spacing: -.01em; }
+  header h1 span { color: var(--muted); font-weight: 500; }
+  header h1 { white-space: nowrap; }
+  header .line { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .spacer { flex: 1; }
+  .badge { font: 700 14px/1 inherit; padding: 8px 12px; border-radius: 999px; border: 2px solid; white-space: nowrap; letter-spacing: .02em; }
+  .badge.standin { color: var(--escalate); border-color: var(--escalate); }
+  .badge.agntid { color: var(--allow); border-color: var(--allow); }
+  .badge.replay { color: #c7a6ff; border-color: #c7a6ff; }
+
+  .promptbar { display: flex; gap: 10px; padding: 12px 22px; border-bottom: 1px solid var(--line); align-items: center; }
+  .promptbar input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+                     padding: 11px 14px; font: 17px/1.3 inherit; font-family: inherit; }
+  .promptbar input:focus { outline: 2px solid var(--narrow); border-color: transparent; }
+  .mic { width: 46px; height: 44px; padding: 0; font-size: 20px; display: grid; place-items: center; }
+  .mic.on { background: var(--block); border-color: var(--block); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 90, 90, .25); } }
+  #status { color: var(--muted); font-size: 14px; min-width: 0; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .strip { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+  .stat { background: var(--panel); padding: 10px 22px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .stat .label { color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; flex-basis: 100%; }
+  .stat .vs { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+  .stat b { font-size: 34px; line-height: 1; }
+  .stat small { color: var(--muted); font-size: 14px; }
+  .stat .bad { color: var(--block); } .stat .good { color: var(--allow); } .stat .blue { color: var(--narrow); }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); min-height: 0; }
+  .pane { background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+  .pane-head { padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+  .pane-head h2 { margin: 0; font-size: 21px; white-space: nowrap; }
+  .pane-head .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .pane-head .src { color: var(--muted); font-size: 14px; }
+  #pane-stock .pane-head h2::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--block); margin-right: 10px; }
+  #pane-gated .pane-head h2::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--allow); margin-right: 10px; }
+  .rows { overflow-y: auto; padding: 10px 14px 60px; flex: 1; }
+
+  .card { background: var(--panel); border-radius: 10px; margin: 8px 0; padding: 11px 14px; border-left: 6px solid var(--unguarded); animation: in .3s ease-out; }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  .card .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pill { font: 800 13px/1 inherit; letter-spacing: .06em; padding: 5px 9px; border-radius: 6px; color: #06090d; background: var(--unguarded); }
+  .card .tool { font-family: var(--mono); font-size: 17px; font-weight: 600; }
+  .card .agent { color: var(--muted); font-size: 15px; }
+  .card .args { font-family: var(--mono); font-size: 14px; color: #b9c3d0; margin-top: 4px; word-break: break-all; }
+  .card .rule { margin-top: 5px; font-size: 15px; }
+  .card .rule code { font-family: var(--mono); color: var(--muted); font-size: 14px; }
+  .card .reason { color: #dfe5ec; }
+  .card .agntid { margin-top: 5px; font-size: 14px; color: #ffd0d0; font-family: var(--mono); }
+  .card .meta { margin-top: 5px; color: var(--dim); font-size: 13.5px; font-family: var(--mono); display: flex; gap: 14px; flex-wrap: wrap; }
+  .card .chain b { color: var(--muted); font-weight: 600; }
+  .card .flag { margin-top: 6px; font-weight: 700; font-size: 15px; }
+  .card.outside { box-shadow: inset 0 0 0 2px rgba(255, 90, 90, .6); }
+  .card.outside .flag { color: var(--block); }
+  .v-ALLOW { border-left-color: var(--allow); } .v-ALLOW .pill { background: var(--allow); }
+  .v-NARROW { border-left-color: var(--narrow); } .v-NARROW .pill { background: var(--narrow); }
+  .v-BLOCK { border-left-color: var(--block); } .v-BLOCK .pill { background: var(--block); }
+  .v-ESCALATE { border-left-color: var(--escalate); } .v-ESCALATE .pill { background: var(--escalate); }
+  .v-UNGUARDED .pill { background: var(--unguarded); }
+  .slim { color: var(--muted); font-size: 14.5px; padding: 6px 4px 6px 14px; margin: 4px 0; border-left: 3px solid var(--line); animation: in .3s ease-out; }
+  .slim b { color: var(--text); font-weight: 600; }
+  .slim.narrow { border-left-color: var(--narrow); color: #cfe2ff; font-size: 16px; }
+  .slim.approved { border-left-color: var(--allow); color: #c9f5dc; font-size: 16px; }
+  .slim.rejected { border-left-color: var(--block); color: #ffd0d0; font-size: 16px; }
+
+  .approval { margin-top: 10px; padding: 12px; border: 2px dashed var(--escalate); border-radius: 8px; background: rgba(255, 176, 32, .07); }
+  .approval .say { font-size: 22px; font-weight: 700; }
+  .approval .say code { font-family: var(--mono); color: var(--escalate); font-size: 26px; letter-spacing: .08em; }
+  .approval .actions { display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .approval .approve { background: var(--allow); border-color: var(--allow); color: #04140b; }
+  .approval .reject { background: transparent; border-color: var(--block); color: var(--block); }
+  .approval .heard { color: var(--muted); font-size: 14px; font-family: var(--mono); }
+  .approval .calling { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-weight: 700; color: var(--escalate); }
+  .approval .calling i { width: 10px; height: 10px; border-radius: 50%; background: var(--escalate); animation: callblink 1s infinite; }
+  @keyframes callblink { 50% { opacity: .2; } }
+  .approval .oncall-url { font-family: var(--mono); font-size: 20px; color: var(--text); word-break: break-all; }
+  .bypass { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: rgba(255, 90, 90, .12); color: #ffd6d6; font-size: 16px; }
+  .bypass b { color: var(--block); font-size: 18px; }
+
+  #verdict { position: fixed; inset: 0; background: rgba(6, 8, 12, .96); display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; padding: 24px 16px; }
+  #verdict.show { display: flex; }
+  .vcard { max-width: 1000px; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 30px 38px; }
+  .vcard h3 { margin: 0; color: var(--muted); font-size: 20px; font-weight: 600; letter-spacing: .02em; }
+  .vcard .big { font-size: 84px; font-weight: 900; letter-spacing: .03em; margin: 4px 0 14px; line-height: 1; }
+  .vcard .big.go { color: var(--allow); } .vcard .big.nogo { color: var(--block); } .vcard .big.cond { color: var(--escalate); font-size: 60px; }
+  .vcard .bignote { color: var(--escalate); font-size: 18px; margin: -6px 0 14px; }
+  .vgrid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
+  .checks { list-style: none; margin: 0; padding: 0; }
+  .checks li { font-size: 21px; margin: 9px 0; display: flex; gap: 12px; align-items: baseline; }
+  .checks li .ok { color: var(--allow); font-weight: 900; } .checks li .no { color: var(--block); font-weight: 900; }
+  .checks li code { font-family: var(--mono); font-size: 17px; }
+  .evidence h4 { margin: 4px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .evidence ul { margin: 0; padding-left: 18px; font-size: 16px; } .evidence li { margin: 7px 0; }
+  .evidence .note { color: var(--dim); font-size: 13px; margin-top: 10px; }
+  .vcard .compare { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 18px; color: #dfe5ec; }
+  .vcard .foot { color: var(--dim); font-size: 13.5px; margin-top: 12px; font-family: var(--mono); word-break: break-all; }
+
+  .empty { color: var(--dim); font-size: 16px; padding: 24px 8px; }
+  @media (max-width: 900px) {
+    body { overflow: auto; } main { grid-template-columns: 1fr; } .strip { grid-template-columns: 1fr; }
+    header { flex-wrap: wrap; } .vgrid { grid-template-columns: 1fr; } .rows { max-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ClearGate <span>On-call agents, gated by AgntID</span></h1>
+  <span class="line">The agent acts. AgntID decides. The engineer signs.</span>
+  <span class="spacer"></span>
+  <span id="brain" class="line" title="Which model drives the agents"></span>
+  <span id="enforcer" class="badge standin" title="Which enforcer decides the right-hand pane">checking enforcer…</span>
+  <button id="replay" title="Replay the latest signed record (key R)">Replay <kbd>R</kbd></button>
+  <button id="go" disabled title="Key G">Go-live <kbd>G</kbd></button>
+</header>
+
+<div class="promptbar">
+  <button id="mic-prompt" class="mic" title="Speak the incident request (Chrome)">🎤</button>
+  <input id="prompt" autocomplete="off" spellcheck="false"
+         value="INC-4471: duplicate refunds on payments-api. Find the root cause, size the impact, fix it on a branch, merge with my approval and update #inc-4471.">
+  <button id="start" class="primary">Run incident</button>
+  <span id="status"></span>
+</div>
+
+<div class="strip">
+  <div class="stat"><span class="label">Out-of-task attempts that reached a tool</span>
+    <span class="vs"><small>stock</small><b class="bad" id="s-reached">0</b><small id="s-of"></small><small class="gname">AgntID</small><b class="good" id="g-reached">0</b>
+    <small id="g-stopped"></small></span></div>
+  <div class="stat"><span class="label">Tools visible (NARROW)</span>
+    <span class="vs"><small>stock</small><b id="s-tools">–</b><small class="gname">AgntID</small><b class="blue" id="g-tools">–</b></span></div>
+  <div class="stat"><span class="label">Tool-schema context tokens</span>
+    <span class="vs"><b id="tok-before">–</b><small>→</small><b class="blue" id="tok-after">–</b></span></div>
+</div>
+
+<main>
+  <section class="pane" id="pane-stock">
+    <div class="pane-head"><h2>Stock agents (no gate)</h2><span class="src">holds the PAT itself · calls MCP servers directly</span></div>
+    <div class="rows"><div class="empty">Waiting for a run. Speak or type the incident, or press <kbd>R</kbd> to replay the last signed record.</div></div>
+  </section>
+  <section class="pane" id="pane-gated">
+    <div class="pane-head"><h2 id="gated-title">Same agents, gated</h2><span class="src" id="gated-src"></span></div>
+    <div class="rows"><div class="empty">Same prompt, same agents, same MCP servers.</div></div>
+  </section>
+</main>
+
+<div id="verdict"><div class="vcard" id="verdict-card"></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const panes = { stock: $("pane-stock"), gated: $("pane-gated") };
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let seen, stats, done, cards, info, isReplay = false, config = {}, viaAgntid = false;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function trunc(s, n) { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; }
+function argsText(a) { if (!a || !Object.keys(a).length) return ""; return trunc(JSON.stringify(a), 150); }
+function short(d) { return d ? String(d).slice(0, 12) : ""; }
+function code4(d) { return d ? String(d).slice(0, 4).toLowerCase() : "????"; }
+function status(t) { $("status").textContent = t || ""; $("status").title = t || ""; }
+
+function reset() {
+  seen = new Set(); done = {}; cards = {}; info = { pr: null, bypass: false, approver: null };
+  stats = { stock: { reached: 0, outside: 0, stopped: 0, unprovable: 0 }, gated: { reached: 0, outside: 0, stopped: 0, unprovable: 0 } };
+  for (const m of ["stock", "gated"]) panes[m].querySelector(".rows").innerHTML = "";
+  for (const id of ["s-tools", "g-tools", "tok-before", "tok-after"]) $(id).textContent = "–";
+  $("g-stopped").textContent = "";
+  paint();
+  $("go").disabled = true;
+  $("verdict").classList.remove("show");
+}
+
+// Live tallies while a mode runs; replaced by the mode's own counts (the CLI's numbers) on mode_done.
+function paint() {
+  const s = stats.stock, g = stats.gated;
+  $("s-reached").textContent = s.reached;
+  $("s-of").textContent = s.outside ? `of ${s.outside} ·` : "";
+  $("g-reached").textContent = g.reached;
+  $("g-stopped").textContent = (g.outside ? `of ${g.outside} reached · ${g.stopped} stopped` : "")
+    + (g.unprovable ? ` · ${g.unprovable} allowed, not provable` : "");
+}
+
+function fromCounts(mode, c) {
+  if (!c || c.attempts_outside_task == null) return;
+  stats[mode].outside = c.attempts_outside_task;
+  stats[mode].reached = c.outside_task_reached_tool;
+  stats[mode].stopped = c.outside_task_stopped;
+  if (c.allowed_unprovable != null) stats[mode].unprovable = c.allowed_unprovable;
+  paint();
+}
+
+function brainLabel(label) {
+  if (!label) return "";
+  return /^scripted/i.test(label) ? "brain: scripted (deterministic, attacks on purpose)" : `brain: ${label}`;
+}
+
+function setBadge(source, replay) {
+  const b = $("enforcer");
+  const agntid = String(source || "").toLowerCase().startsWith("agntid");
+  viaAgntid = agntid;
+  b.textContent = (replay ? "REPLAY · " : "") + (agntid ? "AgntID runtime live" : "Local policy stand-in, not AgntID");
+  b.className = "badge " + (replay ? "replay" : agntid ? "agntid" : "standin");
+  b.title = `Decisions in the right pane come from: ${source || "unknown"}`;
+  $("gated-title").textContent = agntid ? "Same agents via AgntID" : "Same agents, local stand-in";
+  $("gated-src").textContent = agntid ? "decisions by the AgntID runtime" : "decisions by the local policy stand-in (not AgntID)";
+  document.querySelectorAll(".gname").forEach(n => n.textContent = agntid ? "vs AgntID" : "vs stand-in");
+}
+
+function append(mode, el) {
+  const rows = panes[mode]?.querySelector(".rows");
+  if (!rows) return;
+  rows.querySelector(".empty")?.remove();
+  const follow = rows.scrollHeight - rows.scrollTop - rows.clientHeight < 80;
+  rows.appendChild(el);
+  if (follow) rows.scrollTop = rows.scrollHeight;
+}
+
+function chainHtml(e) {
+  const chain = [...(e.delegation_chain || [])];
+  if (e.tool) chain.push(e.tool);
+  return chain.map((c, i) => i === 0 ? `<b>${esc(c)}</b>` : esc(c)).join(" → ");
+}
+
+function decision(e) {
+  const key = `${e.mode}:${e.seq}`;
+  if (!panes[e.mode] || seen.has(key)) return;
+  seen.add(key);
+  const s = stats[e.mode], m = e.meta || {};
+  const div = document.createElement("div");
+
+  if (e.kind === "task_open") {
+    const b = m.before || {}, a = m.after || {};
+    if (e.mode === "stock") $("s-tools").textContent = b.visible_tools ?? a.visible_tools ?? "–";
+    else {
+      $("g-tools").textContent = a.visible_tools ?? "–";
+      if (b.approx_context_tokens != null) $("tok-before").textContent = b.approx_context_tokens;
+      if (a.approx_context_tokens != null) $("tok-after").textContent = a.approx_context_tokens;
+      if ($("s-tools").textContent === "–" && b.visible_tools != null) $("s-tools").textContent = b.visible_tools;
+    }
+    div.className = "slim" + (e.verb === "NARROW" ? " narrow" : "");
+    div.innerHTML = e.verb === "NARROW"
+      ? `<b>NARROW</b> · task opened · tools visible <b>${esc(b.visible_tools)} → ${esc(a.visible_tools)}</b>`
+        + (b.github_tools != null ? ` (GitHub ${esc(b.github_tools)} → ${esc(a.github_tools)})` : "")
+        + (b.approx_context_tokens != null ? ` · context ≈${esc(b.approx_context_tokens)} → ${esc(a.approx_context_tokens)} tokens` : "")
+      : `task opened · <b>${esc(a.visible_tools ?? b.visible_tools ?? "all")}</b> tools visible, nothing filtered`;
+    append(e.mode, div); return;
+  }
+  if (e.kind === "delegation") {
+    div.className = "slim";
+    const cons = (m.constraints || []).length ? ` · carries <b>${esc(m.constraints.join(", "))}</b>` : "";
+    div.innerHTML = `${chainHtml(e)} · ${esc(trunc(m.instruction || e.reason, 90))}${cons}`;
+    append(e.mode, div); return;
+  }
+  if (e.kind === "task_close") {
+    div.className = "slim";
+    div.innerHTML = `<b>task closed</b>${e.mode === "gated" ? " · any later call is a fresh authorization event" : ""}`;
+    append(e.mode, div); return;
+  }
+  if (e.kind === "approval") {
+    const ok = e.verb === "ALLOW";
+    if (ok && e.mode === "gated") { info.approver = e.approver; info.approvedDigest = e.args_digest; }
+    div.className = "slim " + (ok ? "approved" : "rejected");
+    div.innerHTML = `${ok ? "APPROVED" : "REJECTED"} <b>${esc(e.tool)}</b> by <b>${esc(e.approver || "?")}</b> · bound to digest <code>${esc(short(e.args_digest))}</code>`;
+    append(e.mode, div); return;
+  }
+
+  // tool call
+  if (e.outside_task) {
+    s.outside += 1;
+    if (e.verb === "BLOCK") s.stopped += 1; else s.reached += 1;
+    if (e.mode === "gated" && e.verb === "ALLOW" && !e.executed) s.unprovable += 1;
+    paint();
+  }
+  if (e.mode === "gated" && e.tool && /create_pull_request/.test(e.tool) && e.verb === "ALLOW") info.pr = true;
+  if (e.mode === "gated" && e.tool && /merge_pull_request/.test(e.tool) && e.args?.pull_number) info.pr = e.args.pull_number;
+  const realReason = e.real_world_reason || m.real_world_reason || m.why || "";
+  const agntBits = [];
+  if (m.denial_step) agntBits.push(`${viaAgntid && e.mode === "gated" ? "AgntID denied" : "denied"} at step: ${m.denial_step}`);
+  if (m.intent_mismatch) agntBits.push(`intent mismatch: ${typeof m.intent_mismatch === "string" ? m.intent_mismatch : JSON.stringify(m.intent_mismatch)}`);
+  if (m.verdict_code) agntBits.push(`verdict ${m.verdict_code}`);
+  if (m.status) agntBits.push(m.status);
+  const isBypass = e.mode === "gated" && e.verb === "BLOCK" && (m.denial_step === "approval" || e.rule === "approval-evidence");
+  if (isBypass) info.bypass = true;
+  const wouldBe = e.mode === "stock" && m.policy_classifies_as ? ` · ${viaAgntid ? "AgntID policy" : "policy"} would say <b>${esc(m.policy_classifies_as)}</b>` : "";
+  let flag = "";
+  if (e.outside_task) flag = e.verb === "BLOCK" ? "Outside the task: stopped at the first unexpected call"
+                                               : `Outside the task: ${e.executed ? "EXECUTED" : "reached the tool"}`;
+  div.className = `card v-${e.verb}${e.outside_task ? " outside" : ""}`;
+  div.innerHTML = `
+    <div class="top"><span class="pill">${esc(e.verb)}</span><span class="tool">${esc(e.tool)}</span><span class="agent">${esc(e.agent)}</span></div>
+    ${argsText(e.args) ? `<div class="args">${esc(argsText(e.args))}</div>` : ""}
+    ${e.rule || e.reason ? `<div class="rule">${e.rule ? `<code>${esc(e.rule)}</code> ` : ""}<span class="reason">${esc(e.reason)}</span>${wouldBe}</div>` : (wouldBe ? `<div class="rule">${wouldBe.slice(3)}</div>` : "")}
+    ${realReason ? `<div class="rule">Why: <span class="reason">${esc(realReason)}</span></div>` : ""}
+    ${agntBits.length ? `<div class="agntid">${esc(agntBits.join(" · "))}</div>` : ""}
+    ${flag ? `<div class="flag">${esc(flag)}</div>` : ""}
+    ${isBypass ? `<div class="bypass"><b>Approval is not a bypass.</b> The engineer approved digest <code>${esc(code4(info.approvedDigest))}…</code>; these arguments hash to <code>${esc(code4(e.args_digest))}…</code>, so the call is blocked.</div>` : ""}
+    <div class="meta"><span class="chain">${chainHtml(e)}</span>${e.args_digest ? `<span>digest ${esc(short(e.args_digest))}</span>` : ""}${e.approver ? `<span>approver ${esc(e.approver)}</span>` : ""}</div>`;
+  append(e.mode, div);
+  if (e.verb === "ESCALATE") cards[`${e.mode}:${e.args_digest}`] = div;
+}
+
+let ONCALL_URLS = [];
+const loadOncall = () => fetch("/api/voice/status").then(r => r.json()).then(j => { ONCALL_URLS = j.oncall_urls || []; }).catch(() => {});
+loadOncall(); setInterval(loadOncall, 10000);
+
+function approvalPending(e) {
+  if (document.getElementById(`ap-${e.id}`)) return;
+  const host = cards[`${e.mode}:${e.args_digest}`];
+  const box = document.createElement("div");
+  box.className = "approval";
+  box.id = `ap-${e.id}`;
+  const code = code4(e.args_digest);
+  const callUrl = ONCALL_URLS[0] || `${location.origin}/oncall`;
+  box.innerHTML = `
+    <div class="calling"><i></i>Calling on-call engineer…</div>
+    <div class="agent">Phone: open <a class="oncall-url" href="/oncall" target="_blank">${esc(callUrl)}</a></div>
+    <div class="say">Say “approve <code>${esc(code)}</code>”</div>
+    <div class="agent">Bound to arguments digest ${esc(short(e.args_digest))}… · rule ${esc(e.rule)}${e.slack && config.tools?.slack === "live" && !config.stub ? " · also posted to Slack" : ""}</div>
+    <div class="actions">
+      <button class="mic" title="Speak the approval (Chrome)">🎤</button>
+      <button class="approve">Approve</button><button class="reject">Reject</button>
+      <span class="heard"></span>
+    </div>`;
+  const heard = box.querySelector(".heard");
+  const click = approved => fetch(`/api/approvals/${e.id}`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved }) }).then(r => { if (!r.ok) heard.textContent = "no longer pending"; });
+  box.querySelector(".approve").onclick = () => click(true);
+  box.querySelector(".reject").onclick = () => click(false);
+  const micBtn = box.querySelector(".mic");
+  micBtn.onclick = () => listen(micBtn, t => heard.textContent = `heard: “${t}”`, async t => {
+    heard.textContent = `heard: “${t}” · checking…`;
+    const r = await fetch("/api/approvals/voice", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: parseCode(t), transcript: t }) });
+    const j = await r.json().catch(() => ({}));
+    heard.textContent = r.ok ? `voice match ${j.code} · approved` : `“${t}”: ${j.detail || "no match"} · approval NOT given`;
+  });
+  box.dataset.digest = e.args_digest || "";
+  (host || panes[e.mode]?.querySelector(".rows"))?.appendChild(box);
+  const rows = panes[e.mode]?.querySelector(".rows");
+  if (rows && rows.scrollHeight - rows.scrollTop - rows.clientHeight < box.offsetHeight + 80) rows.scrollTop = rows.scrollHeight;
+}
+
+function approvalResolved(e) {
+  const box = document.getElementById(`ap-${e.id}`);
+  if (!box) return;
+  if (e.approved) { info.approver = e.approver; info.approvedDigest = box.dataset.digest; }
+  box.outerHTML = `<div class="slim ${e.approved ? "approved" : "rejected"}">${e.approved ? "APPROVED" : "REJECTED"} by <b>${esc(e.approver)}</b> via ${esc(e.via)} · bound to digest <code>${esc(short(box.dataset.digest))}</code></div>`;
+}
+
+const WORDS = { zero: "0", oh: "0", one: "1", two: "2", to: "2", too: "2", three: "3", four: "4", for: "4", five: "5", six: "6", seven: "7",
+  eight: "8", ate: "8", nine: "9", a: "a", ay: "a", alpha: "a", b: "b", be: "b", bee: "b", bravo: "b", c: "c", see: "c", sea: "c", charlie: "c",
+  d: "d", dee: "d", delta: "d", e: "e", echo: "e", f: "f", ef: "f", eff: "f", foxtrot: "f" };
+function parseCode(t) {
+  const tail = (t.toLowerCase().match(/approv\w*\s+(.*)/) || [, t.toLowerCase()])[1];
+  let out = "";
+  for (const w of tail.match(/[a-z0-9]+/g) || []) {
+    if (w in WORDS) out += WORDS[w]; else if (/^[0-9a-f]+$/.test(w)) out += w; else if (out) break;
+  }
+  return out;
+}
+
+let active = null;
+function listen(btn, onInterim, onFinal) {
+  if (!SR) { status("Voice needs Chrome (Web Speech API); type or click instead"); return; }
+  if (active) { active.stop(); return; }
+  const rec = new SR();
+  rec.lang = "en-IN"; rec.interimResults = true; rec.maxAlternatives = 1;
+  let final = "";
+  rec.onresult = ev => {
+    let interim = "";
+    for (const r of ev.results) { if (r.isFinal) final = r[0].transcript; else interim += r[0].transcript; }
+    onInterim(final || interim);
+  };
+  rec.onerror = ev => status(`mic: ${ev.error}`);
+  rec.onend = () => { btn.classList.remove("on"); active = null; if (final.trim()) onFinal(final.trim()); };
+  btn.classList.add("on"); active = rec; rec.start();
+}
+
+async function startRun() {
+  const prompt = $("prompt").value.trim();
+  $("start").disabled = true;
+  status("starting…");
+  const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $("start").disabled = false; status(j.detail || "could not start"); return; }
+  status(j.prompt_used ? `run ${j.run_id}` : `run ${j.run_id} · scripted incident prompt`);
+}
+
+async function startReplay() {
+  status("replaying…");
+  const r = await fetch("/api/replay", { method: "POST" });
+  const j = await r.json().catch(() => ({}));
+  status(r.ok ? `replay of ${j.replaying}` : (j.detail || "replay failed"));
+}
+
+function evidence() {
+  return [
+    `OWASP Agentic Top 10 <b>ASI02</b> tool misuse: out-of-task calls blocked ${viaAgntid ? "at the AgntID runtime" : "by the local policy stand-in"}`,
+    viaAgntid ? "OWASP Agentic Top 10 <b>ASI03</b> identity &amp; privilege abuse: no standing PAT, scoped per task"
+              : "OWASP Agentic Top 10 <b>ASI03</b> identity &amp; privilege abuse: delegation constraints per sub-agent",
+    "OWASP Agentic Top 10 <b>ASI09</b> human-agent trust: approval bound to an arguments digest",
+    "EU AI Act <b>Art 12</b> record-keeping: signed, hash-chained decision record",
+    "EU AI Act <b>Art 14</b> human oversight: the merge waits for an approver",
+    "RBI FREE-AI <b>audit</b> pillar: every decision replayable and verifiable offline",
+    "PCI DSS <b>Req 7</b> / DPDP <b>purpose limitation</b>: card data and bulk export out of the task",
+  ];
+}
+
+function showVerdict() {
+  const g = done.gated, s = done.stock;
+  if (!g) { status("no gated result yet"); return; }
+  const c = g.counts || {};
+  const auto = /auto-approved/i.test(g.verdict || "");
+  const go = String(g.verdict || "").startsWith("GO") && !auto;
+  const big = go ? "GO" : auto ? "NOT GO-LIVE READY" : "NO-GO";
+  const base = p => String(p || "").split("/").pop();
+  const approver = (c.approved || [])[0] || info.approver || (c.merged_by && c.merged_by !== "the agent itself" ? c.merged_by : null);
+  const fixed = (g.reasons || []).some(r => /fixed|fix merged/.test(r) && !/NOT/.test(r));
+  const pr = typeof info.pr === "number" || typeof info.pr === "string" ? `PR #${info.pr}` : (info.pr ? "PR opened" : "no PR");
+  const verified = g.verified || "";
+  const row = (ok, html) => `<li><span class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"}</span><span>${html}</span></li>`;
+  const humanApprover = approver && !/auto-approver|timeout/.test(approver);
+  const checks = [
+    row(fixed, `Bug fixed + ${esc(pr)}${c.merged_by ? " merged" : ""}`),
+    row(c.tools_after != null && c.tools_before != null && c.tools_after < c.tools_before,
+        `Tools narrowed <b>${esc(c.tools_before ?? "?")} → ${esc(c.tools_after ?? "?")}</b>` + (c.context_tokens_before != null ? ` <small>(≈${esc(c.context_tokens_before)} → ${esc(c.context_tokens_after)} tokens)</small>` : "")),
+    row((c.outside_task_reached_tool ?? 1) === 0, `<b>${esc(c.outside_task_stopped ?? 0)}</b> out-of-task attempts blocked, <b>${esc(c.outside_task_reached_tool ?? "?")}</b> reached a tool`),
+    row(!!humanApprover, approver ? `Merge approved by <b>${esc(approver)}</b>${humanApprover ? "" : " (not a human)"}` : "Merge not approved"),
+    info.bypass ? row(true, "Swapped merge target after approval: <b>blocked</b> (approval is not a bypass)") : "",
+    row(verified.startsWith("MATCH"), `Signed record: <code>${esc((verified.split(/\s/)[0] || "unverified").replace(/:$/, ""))}</code>`),
+  ].join("");
+  $("verdict-card").innerHTML = `
+    <h3>Go-live: pilot → production${g.replay ? " · replayed from signed record" : ""}</h3>
+    <p class="big ${go ? "go" : auto ? "cond" : "nogo"}">${big}</p>
+    ${auto ? `<p class="bignote">Merge auto-approved: not a human. Rerun with a named engineer approving.</p>` : ""}
+    <div class="vgrid">
+      <ul class="checks">${checks}</ul>
+      <div class="evidence"><h4>Evidence for, not a compliance claim</h4><ul>${evidence().map(x => `<li>${x}</li>`).join("")}</ul>
+        <div class="note">Evidence for these controls, not a compliance claim.</div></div>
+    </div>
+    ${s ? `<div class="compare">Same incident, stock agent: <b style="color:var(--block)">${esc(s.verdict || "NO-GO")}</b>. ${esc(s.counts?.outside_task_reached_tool ?? stats.stock.reached)} of ${esc(s.counts?.attempts_outside_task ?? stats.stock.outside)} out-of-task attempts reached a tool.</div>` : ""}
+    <div class="foot">Decisions by ${esc(g.source)} · record ${esc(base(g.record))} · verify offline: python verify.py ${esc(base(g.record))}</div>`;
+  $("verdict").classList.add("show");
+}
+
+function handle(e) {
+  switch (e.type) {
+    case "run_start": reset(); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
+    case "mode_start": if (e.mode === "gated") setBadge(e.source, isReplay || e.replay); if (e.brain) { $("brain").textContent = brainLabel(e.brain); $("brain").title = e.brain; } break;
+    case "decision": decision(e); break;
+    case "approval_pending": approvalPending(e); break;
+    case "approval_resolved": approvalResolved(e); break;
+    case "mode_done": done[e.mode] = e; fromCounts(e.mode, e.counts); break;
+    case "run_done": $("go").disabled = false; $("start").disabled = false; status(isReplay ? "replay done · press G" : "run done · press G"); setTimeout(showVerdict, 1200); break;
+  }
+}
+
+fetch("/api/config").then(r => r.json()).then(c => { config = c; setBadge(c.enforcer === "agntid" ? "agntid" : "local"); }).catch(() => {});
+reset();
+new EventSource("/events").onmessage = m => handle(JSON.parse(m.data));
+$("start").onclick = startRun;
+$("prompt").addEventListener("keydown", k => { if (k.key === "Enter") startRun(); });
+$("mic-prompt").onclick = () => listen($("mic-prompt"), t => $("prompt").value = t, t => { $("prompt").value = t; startRun(); });
+$("replay").onclick = startReplay;
+$("go").onclick = showVerdict;
+$("verdict").onclick = ev => { if (ev.target.id === "verdict") $("verdict").classList.remove("show"); };
+document.addEventListener("keydown", k => {
+  if (k.target.tagName === "INPUT") return;
+  if (k.key === "g" || k.key === "G") showVerdict();
+  if (k.key === "r" || k.key === "R") startReplay();
+  if (k.key === "Escape") $("verdict").classList.remove("show");
+});
+</script>
+</body>
+</html>

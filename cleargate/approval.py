@@ -50,6 +50,11 @@ def approval_blocks(req: ApprovalRequest) -> list[dict[str, Any]]:
     ]
 
 
+def short_code(args_digest: str) -> str:
+    """The 4-hex-char code a human reads out to approve (first 4 chars of the args digest)."""
+    return args_digest[:4].lower()
+
+
 def verify_slack_signature(secret: str, timestamp: str, body: bytes, signature: str) -> bool:
     if abs(time.time() - int(timestamp or 0)) > 300:
         return False
@@ -68,6 +73,7 @@ class ApprovalBroker:
         self.timeout = timeout
         self.auto_label = auto_label
         self._pending: dict[str, tuple[threading.Event, list[ApprovalResult]]] = {}
+        self._requests: dict[str, ApprovalRequest] = {}
         self._lock = threading.Lock()
 
     def request(self, req: ApprovalRequest) -> ApprovalResult:
@@ -80,14 +86,16 @@ class ApprovalBroker:
         box: list[ApprovalResult] = []
         with self._lock:
             self._pending[req.id] = (done, box)
+            self._requests[req.id] = req
         posted = self._post_to_slack(req)
         self.bus.publish({"type": "approval_pending", "mode": req.mode, "run_id": req.run_id, "id": req.id,
                           "agent": req.agent, "tool": req.tool, "args": req.args, "args_digest": req.args_digest,
-                          "rule": req.rule, "delegation_chain": req.delegation_chain, "slack": posted})
+                          "code": short_code(req.args_digest), "rule": req.rule, "delegation_chain": req.delegation_chain, "slack": posted})
         if not done.wait(self.timeout):
             self.resolve(req.id, False, "timeout", "timeout")
         with self._lock:
             self._pending.pop(req.id, None)
+            self._requests.pop(req.id, None)
         return box[0]
 
     def resolve(self, approval_id: str, approved: bool, approver_id: str, via: str) -> bool:
@@ -100,6 +108,20 @@ class ApprovalBroker:
         self.bus.publish({"type": "approval_resolved", "id": approval_id, "approved": approved,
                           "approver": approver_id, "via": via})
         return True
+
+    def resolve_by_code(self, code: str, approver_id: str, via: str = "voice", approved: bool = True) -> bool:
+        """Resolve the one pending approval whose arguments digest starts with `code` (spoken
+        or typed; at least 4 hex chars). Refuses when no request, or more than one, matches,
+        so a short code can never approve a different set of arguments."""
+        code = (code or "").strip().lower()
+        if len(code) < 4 or any(c not in "0123456789abcdef" for c in code):
+            return False
+        with self._lock:
+            matches = [rid for rid, req in self._requests.items()
+                       if req.args_digest.lower().startswith(code) and not self._pending[rid][0].is_set()]
+        if len(matches) != 1:
+            return False
+        return self.resolve(matches[0], approved, approver_id, via)
 
     def pending_ids(self) -> list[str]:
         with self._lock:
