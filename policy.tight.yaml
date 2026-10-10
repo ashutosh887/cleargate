@@ -1,5 +1,5 @@
 # ClearGate policy (tight variant for `cleargate diff`): payments incident team.
-# Differs from policy.yaml: refund reads capped at 20 rows, agent refunds capped at INR 1,000.
+# Differs from policy.yaml: refund reads capped at 10 rows (the db agent reads 20 per order), agent refunds capped at INR 1,000.
 # Local stand-in that mirrors the AgntID portal policies.
 # Read top to bottom. The first rule that matches a call decides it.
 # Anything no rule allows is blocked (zero standing privilege).
@@ -81,9 +81,9 @@ rules:
     agents: [database, db]
     tools: [payments.query_refunds]
     where:
-      limit: { matches: '^(|20|1[0-9]|[1-9])$' }
+      limit: { matches: '^(|10|[1-9])$' }
     verb: ALLOW
-    reason: "Data minimisation (DPDP Act s.6, RBI data-localisation hygiene): bounded refund reads, limit 1-20"
+    reason: "Data minimisation (DPDP Act s.6, RBI data-localisation hygiene): bounded refund reads, limit 1-10"
 
   - id: database-reads-orders
     agents: [database, db]

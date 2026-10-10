@@ -35,7 +35,8 @@ class Attempt:
 
 
 def latest_record(settings: Settings, mode: str = "gated") -> Path:
-    found = sorted(settings.records_dir.glob(f"*-{mode}.jsonl"))
+    # Incident runs are named <timestamp>-<id>-<mode>.jsonl; skip bank-* and other prefixed records.
+    found = sorted(p for p in settings.records_dir.glob(f"*-{mode}.jsonl") if p.name[:1].isdigit())
     if not found:
         raise SystemExit(f"no {mode} record in {settings.records_dir}; run `cleargate check` first")
     return found[-1]

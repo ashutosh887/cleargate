@@ -117,7 +117,11 @@ def cmd_diff(args: argparse.Namespace) -> int:
     for b, a in flips:
         print(f"  {a.agent:<10} {a.tool:<28} {a.args_digest[:12]}  {paint(b.verb, b.verb)} → {paint(a.verb, a.verb)}"
               f"  ({a.rule}) {a.args}")
-    print(f"{len(flips)} of {len(pairs)} calls change, matched call by call on the canonical arguments digest")
+    reasons = [(b, a) for b, a in pairs if b.verb == a.verb and b.rule != a.rule]
+    for b, a in reasons:
+        print(f"  {a.agent:<10} {a.tool:<28} {a.args_digest[:12]}  {a.verb} by {b.rule} → {a.rule}  (same verb, different rule)")
+    print(f"{len(flips)} of {len(pairs)} calls change, matched call by call on the canonical arguments digest"
+          + (f"; {len(reasons)} more decided by a different rule" if reasons else ""))
     return 0
 
 
