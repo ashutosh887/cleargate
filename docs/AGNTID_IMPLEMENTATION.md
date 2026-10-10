@@ -25,7 +25,7 @@ Every AgntID feature ClearGate uses, where it is configured, and why. Policies a
 
 ## Policies (portal)
 
-Seven AgntID controls and one ClearGate layer. The rows that change this run's outcome are 1, 4, 6 and A.
+Eight AgntID controls and one ClearGate layer. The rows that change the incident run's outcome are 1, 4, 6 and A; row 8 is the bank voice agent's destination rule.
 
 | # | Control | Portal location | Setting | Effect in the demo | Real-world reason |
 |---|---|---|---|---|---|
@@ -36,6 +36,7 @@ Seven AgntID controls and one ClearGate layer. The rows that change this run's o
 | 5 | Runtime-held credential | MCP server entry, auth `bearer_token` | GitHub token held by the runtime only | The gated agents never hold it; the stock agent holds the PAT | No standing PAT on the gated path |
 | 6 | Per-agent authority via delegations | SDK: `send_delegation_open` per hand-off | Each sub-agent has its own tool allowlist; triage and db are read-only | DELEGATION lines with `constraints`. Whether the runtime denies a read-only agent's write on its own: [confirmed on the day] | 7 of 12 sub-agents lost "do not modify" in AgntID's experiment |
 | 7 | Task close ends authority | SDK: `send_task_open_details`, `send_task_close` | Access exists only while the task is open | A call after close is denied | Just-for-task access |
+| 8 | Parameter-Level Policy `bank-destination-allowlist` (bank voice agent) | Access Policies, MCP policy | `payments_refund_to_account.destination_account`, string allow-list of the registered accounts on file (`50100234567812`, `50100876543219` in the sandbox) | A refund to any other account is denied before the tool runs. Forced by the bargaining caller campaign: gated ₹15,580 → ₹0 (local stand-in, seed 7) | Refunds credit only a registered account; the caller is the policy variable |
 | A | **ClearGate layer (app layer, not AgntID-native):** approval bound to the args digest | Access Control, Tools / policy for the runtime side | `policy.yaml` marks the merge ESCALATE; ClearGate binds the engineer's approval to the SHA-256 digest of the exact arguments and re-sends the call through the runtime, which makes the final decision | Merge waits for the engineer; a merge retried with different arguments is blocked by ClearGate because the approval digest no longer matches | RBI IT governance: change management, maker-checker |
 
 Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator) can check policies before the live run, and **Reporting** shows the runtime's ALLOW and BLOCK decisions. Neither has been used for this project yet: [screenshot once done]. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
@@ -51,9 +52,11 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 5. Operations, MCP, Servers, Add MCP: `payments`, `comms`, `github` as in the table above. Wait for "Applied".
 6. Access Control, Tools: approve tools that need review; disable `run_sql` and `post_message`.
 7. Access Control, Advanced: check labels on `export_customer_records`, `run_sql`, `issue_refund`, merge.
-8. Access Policies: the two parameter policies.
-9. Inspector, List Tools; call `payments_issue_refund` with `amount_inr=6000`; expect a denial.
-10. Simulator run, then Reporting.
+8. Access Policies: the two incident parameter policies.
+9. Access Policies, add MCP policy `bank-destination-allowlist`: server `payments`, tool `refund_to_account`, parameter `destination_account`, type string, allow-list = the registered accounts on file. Reason: "Forced by the bargaining caller campaign: gated ₹15,580 → ₹0". Pair it with the amount rule (`amount_inr` 1 to 5000).
+10. Inspector: call `payments_refund_to_account` with an unregistered `destination_account`; expect a denial. Then run `PAYEE_CHECK=off cleargate bank --campaign --seed 7` with `CLEARGATE_ENFORCER=agntid`.
+11. Inspector, List Tools; call `payments_issue_refund` with `amount_inr=6000`; expect a denial.
+12. Simulator run, then Reporting.
 
 ## SDK calls, in order
 

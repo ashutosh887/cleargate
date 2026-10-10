@@ -1,6 +1,6 @@
 # Architecture
 
-ClearGate has three parts: an agent team, an enforcement seam that every tool call passes through, and an evidence layer (signed record, UI, GO / NO-GO). In live mode the Runtime Access Decision on every call comes from the AgntID runtime, including the merge after a human approves it. On the gated path ClearGate holds no credential for a tool it reaches through the runtime and executes no call itself.
+ClearGate has three parts: the agents under test, an enforcement seam that every tool call passes through, and an evidence layer (signed record, UI, GO / NO-GO). The headline agent is a bank's voice support line with five sub-agents that refunds failed UPI payments; the second is an on-call team fixing a payments incident. The public site is https://trycleargate.vercel.app. In live mode the Runtime Access Decision on every call comes from the AgntID runtime, including the merge after a human approves it. On the gated path ClearGate holds no credential for a tool it reaches through the runtime and executes no call itself.
 
 **Two policy sources, two jobs.** Under `CLEARGATE_ENFORCER=agntid`, every allow and deny is AgntID's: Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile Low / Medium / High), Parameter-Level Policies (Visual Policy Builder | Rego (Policy as Code)) and Intent-Based Controls, configured in the portal. `policy.yaml` is used only as the app-layer escalation list: its ESCALATE rules say which calls wait for a human approval bound to the args digest. Its ALLOW and BLOCK rules are not consulted for the decision; they serve the offline stand-in, the real-world reason shown on each card, and replay.
 
@@ -8,12 +8,14 @@ ClearGate has three parts: an agent team, an enforcement seam that every tool ca
 
 | Component | Code | Role |
 |---|---|---|
-| Agent team | `cleargate/agents/team.py` (`SYSTEMS`, `team_steps`), `cleargate/agents/loop.py` (`Agent`) | Orchestrator plus four sub-agents: triage, db, fix, comms. Each sees only the tools its gate returns. |
+| Bank voice agent | `cleargate/bank/` (`call.py`, `caller.py`, `enforce.py`, `store.py`) | Five sub-agents: voice, accounts, statements, payments, ops. Caller ID binds `customer_id`; the refund tool is hidden until a payment task opens; refunds are capped at ₹5,000 and the destination must be an account on file (`bank-destination-allowlist`). `--campaign` plays scripted Hindi-English callers and reads every rupee back from the sandbox ledger. |
+| Incident team | `cleargate/agents/team.py` (`SYSTEMS`, `team_steps`), `cleargate/agents/loop.py` (`Agent`) | Orchestrator plus four sub-agents: triage, db, fix, comms. Each sees only the tools its gate returns. |
 | Brains | `cleargate/agents/brain.py` (`BedrockBrain`, `AnthropicBrain`, `OpenAICompatibleBrain`), `cleargate/agents/scripted.py` (`ScriptedBrain`) | `CLEARGATE_LLM` picks one. The scripted brain is deterministic and follows the injection on purpose, so stock vs gated is repeatable. |
 | Enforcement seam | `cleargate/enforcement.py` (`Enforcer` protocol, `EnforcementClient`, `StockClient`) | One place every call goes through. `EnforcementClient` asks the enforcer, handles ESCALATE, and records the outcome. `StockClient` calls tools directly and records them as `UNGUARDED`. |
 | AgntID adapter | `cleargate/agntid_enforcer.py` (`AgntIDEnforcer`) | `CLEARGATE_ENFORCER=agntid`. Talks to the runtime MCP endpoint with the `agntid` SDK. Holds ESCALATE calls for approval, then re-sends them through the runtime. |
 | Local stand-in | `cleargate/enforcement.py` (`LocalPolicyStandIn`), `cleargate/policy.py` | `CLEARGATE_ENFORCER=local` (default). Evaluates `policy.yaml` offline. Labelled "not AgntID" everywhere. |
-| Approval broker | `cleargate/approval.py` (`ApprovalBroker`, `short_code`) | Holds a pending approval, resolves it by the spoken code on the `/oncall` call, a web click, or a Slack button. |
+| Approval broker | `cleargate/approval.py` (`ApprovalBroker`, `short_code`) | Holds a pending approval, resolves it by the spoken code on the `/oncall` call, a web click, or a Slack button. The code is 4 hex characters of an HMAC-SHA256 over the args digest under a server-held secret. |
+| Durable approval | `cleargate/durable.py` | `--durable` stores an escalated call as a SQLite receipt and exits; `cleargate approve` and `cleargate resume` finish it later into the same signed record. Codes are kept as a salted PBKDF2 verifier, 5 attempts, 24-hour expiry, one execution per receipt. |
 | MCP servers | `cleargate/mcp/payments.py`, `cleargate/mcp/comms.py`, `cleargate/mcp/serve.py` | `payments` (`:9101`) over Postgres; `comms` (`:9102`) over Slack or a local outbox. They sit behind the runtime. |
 | Tool adapters | `cleargate/tools/` | Live and stub GitHub, Postgres, Slack. Stubs make the offline run possible. |
 | Signed record | `cleargate/record.py` (`SignedRecord`), `cleargate/canonical.py`, `verify.py` | JSONL, one decision per line, hash-chained and Ed25519-signed. |
@@ -23,8 +25,10 @@ ClearGate has three parts: an agent team, an enforcement seam that every tool ca
 | Voice | `cleargate/voice/sarvam.py` | The `/oncall` call: Sarvam text-to-speech reads the pending merge, Sarvam speech-to-text transcribes the spoken code. |
 | Attack suite | `cleargate/attacks/suite.py`, `attacks/catalog.yaml` | 20 out-of-scope requests fired at the stock servers and through the runtime. |
 | Policy writer | `cleargate/policywriter.py` | AgntID's Runtime Operator Workflow, automated: Auto-Discover from a signed record → Define Policies → Simulate & Test (shadow replay with the stand-in evaluator) → Enforce (applied in the portal by hand) → Audit & Replay. |
+| Policy fuzzer | `cleargate/evolve/` | `cleargate evolve` mutates every attack the policy stopped and keeps what gets through; survivors go to `attacks/evolved.json`, which the CI gate re-runs. Deterministic, no LLM. |
+| Coverage matrix | `cleargate/coverage.py` | Attack class × deciding control with an OWASP mapping; writes `docs/coverage.html` and a signed record. |
 | CI gate | `cleargate/gate.py`, `.github/workflows/cleargate-gate.yml` | Attack suite plus legit run on PRs; exit 1 if an attack reached a tool; SARIF. |
-| Evidence pack | `cleargate/evidence.py` | Signed folder with the decision record, `verify.py` and policy, for a go-live review. |
+| Evidence pack | `cleargate/evidence.py`, `cleargate/claims.py` | Signed folder with the decision record, `verify.py` and policy, for a go-live review. Its written report is claim-checked: a sentence survives only if its numbers, quotes and names match the record. |
 | Runtime proof | `scripts/runtime_proof.py` | PASS / FAIL checklist against the live runtime. |
 
 ## Trust boundaries

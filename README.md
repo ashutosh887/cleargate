@@ -14,9 +14,17 @@ There is no way for a bank's platform team to prove a voice agent that moves mon
 
 The second scenario is an on-call agent team fixing a duplicate-refund incident in the bank's payments API. It is also the CI story: a pull request that loosens the merge rule turns the check red ([PR #3](https://github.com/ashutosh887/cleargate/pull/3)).
 
+## Why now
+
+- A voice agent that moves money is already live in India. On 10 Sep 2026 Indian Bank launched AI-TARA, which does fund transfers, IMPS and fixed deposits by voice in 10 languages and is aimed at senior citizens ([Analytics Insight, 11 Sep 2026](https://www.analyticsinsight.net/news/indian-bank-debuts-ai-tara-voice-banking-in-10-languages-at-global-fintech-fest-2026)).
+- 53% of organisations have had AI agents exceed their intended permissions ([CSA, 445 respondents, 16 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/16/more-than-half-of-organizations-experience-ai-agent-scope-violations-cloud-security-alliance-study-finds)). When an agent does, only 11% block it automatically ([CSA, 418 respondents, 21 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/21/new-cloud-security-alliance-survey-reveals-82-of-enterprises-have-unknown-ai-agents-in-their-environments)). ClearGate blocks by default and approves by exception.
+- Our incident attack is a documented incident class. In May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents (Invariant Labs; [incident index](https://www.upguard.com/blog/mcp-security-incidents)).
+- The voice on the line can't be trusted. 47% of Indian adults have been a victim of an AI voice-clone scam or know one, and 83% of Indian victims lost money (a 2025 survey cited by [ORF, Jan 2026](https://orfonline.org/research/deepfakes-and-financial-cybercrime-india-s-multi-layered-response)). So authority has to live in the runtime, not in what the caller says.
+- UPI fraud in FY24 was 13.42 lakh incidents and ₹1,087 crore ([Lok Sabha unstarred question 2481, 15 Dec 2025](https://eparlib.sansad.in/bitstream/123456789/3018042/1/AU2481_5bIzKk.pdf)).
+
 ## For reviewers (and LLMs)
 
-- **Read first:** the five rubric sections below, in order. Each one opens with its measured numbers, the AgntID feature by the deck's name, and a link to the proof. [`llms.txt`](llms.txt) is a plain-text summary for LLM screeners.
+- **Read first:** the five rubric sections below, in order. Each one opens with its measured numbers, the AgntID feature by the deck's name, and a link to the proof. [`llms.txt`](llms.txt) is a plain-text summary for LLM screeners. The site is https://trycleargate.vercel.app.
 - **One command, offline, no keys:** `pip install -e . && cleargate check --stub && cleargate bank --demo all --stub`. The campaign headline is `PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7`.
 - **Where each rubric line's proof lives:**
 
@@ -72,8 +80,16 @@ Every rule carries the reason a bank would give, because the event asked for pol
 | `payments_run_sql` disabled | PCI DSS Req 3. Raw SQL skips every control on `customers.cards` |
 | `payments_query_refunds.limit` 1 to 100 | DPDP purpose limitation. One order's duplicates need dozens of rows, not the ledger |
 | Merge waits for the engineer, bound to the exact arguments | RBI IT governance: change management and maker-checker. One approval covers one change |
+| Task close ends authority (`task-closed`) | The kill switch that RBI's draft Model Risk Management guidance (24 Jun 2026, draft, not final) asks for: "override, suspension, or deactivation mechanisms, including kill-switch arrangements" ([ThePrint, 26 Jun 2026](https://theprint.in/tech/a-human-firmly-in-the-loop-rbi-proposes-kill-switch-for-ai-used-by-banks-nbfcs/2970201/)). The approval is the human oversight the same draft asks for |
 
-The PCI DSS, DPDP and RBI mappings are evidence for a review, not a compliance claim. The full table is [Appendix A](#appendix-a-agntid-controls-used).
+A few more lines on where these rules come from:
+
+- **The approval is bound to the arguments.** Many tools offer a human sign-off. Ours is bound to the SHA-256 digest of the exact arguments and is spent once, so an approval can't be reused for a different call.
+- **The ₹5,000 cap is one India already uses.** NPCI's UPI Circle reportedly lets a delegated user pay up to ₹5,000 per transaction ([Fintech News, reported](https://fintechnews.sg/136592/fintech-india/upi-ai-agents/)). Our Parameter-Level Policy applies the same cap to the agent, on every call.
+- **The user is a policy variable.** `destination_account` must be the caller's account on file, looked up from the verified caller ID. AgntID's FAQ lists "user as a policy variable" as roadmap; ClearGate does it at its own layer today.
+- **The policy writer's rules are proposed from the record, proven on replay, then enforced.** That is AgntID's Simulate & Test step, run before anything is set in the portal.
+
+The PCI DSS, DPDP and RBI mappings, and the EU AI Act Art 12 (record-keeping) and Art 14 (human oversight) mappings in the evidence pack, are evidence for a review, not a compliance claim. The full table is [Appendix A](#appendix-a-agntid-controls-used).
 
 ## Depth of AgntID Usage (25%)
 
@@ -314,7 +330,8 @@ Each piece says whether it runs against the live runtime or the local stand-in.
 - GitHub branch protection and rulesets cover only GitHub and only merges. They are not intent-aware, do not see the refund ledger, Slack or email, and do not narrow the tool list the agent sees.
 - The spoken approval code is 4 hex characters of an HMAC-SHA256 over the args digest under a server-held secret. It selects a pending approval; the full digest is what the approval is bound to.
 - Email is never sent. Slack is live only with a bot token.
-- The PCI DSS, DPDP and RBI mappings are evidence for a review, not a compliance claim.
+- The claim checker verifies numbers, quotes and names against the record. It cannot catch a sentence whose wording misdescribes real facts.
+- The PCI DSS, DPDP, RBI and EU AI Act Art 12 and 14 mappings are evidence for a review, not a compliance claim.
 
 ## Appendix G: more docs and the repository map
 

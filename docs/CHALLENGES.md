@@ -4,7 +4,7 @@ What got in the way on 10 October 2026 and what we did about it.
 
 ## What existed before the event, and what was built today
 
-To be transparent: the harness (agent loop, stub tools, local policy stand-in, signed record, `verify.py`, replay and diff) was scaffolded before hacking started, from public material only. Everything that touches a live AgntID runtime was built on the day: running the runtime, the portal configuration, the `payments` and `comms` MCP servers, the agent team for the bank incident, the AgntID adapter running against a real runtime, the attack suite, the voice on-call call, the policy writer, the CI gate, the evidence pack and the runtime proof script. The harness was written on 9 October; this repository's history was rebuilt into fresh commits on 10 October, so commit dates show when the code was committed, not when the harness was written.
+To be transparent: the harness (agent loop, stub tools, local policy stand-in, signed record, `verify.py`, replay and diff) was scaffolded before hacking started, from public material only. Everything that touches a live AgntID runtime was built on the day: running the runtime, the portal configuration, the `payments` and `comms` MCP servers, the agent team for the bank incident, the AgntID adapter running against a real runtime, the bank voice agent and its caller campaign, the attack suite, `cleargate evolve`, the coverage matrix, the voice on-call call, durable approval, the policy writer, the CI gate, the evidence pack with its claim checker and the runtime proof script. The harness was written on 9 October; this repository's history was rebuilt into fresh commits on 10 October, so commit dates show when the code was committed, not when the harness was written.
 
 ## 1. First contact with a live runtime
 
@@ -26,9 +26,9 @@ The runtime allows or denies; it does not hold a pending human approval. We buil
 
 Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. Mode used for the final run: [engine confirmed on the day].
 
-## 6. Parameter policies are numeric
+## 6. Parameter policies on the incident team are numeric
 
-We could bound `limit` and `amount_inr` with min/max, but not a string such as a Slack channel or a git branch. String constraints became separate narrow tools: `post_incident_update` is hard-wired to `#inc-4471`, and the generic `post_message` is disabled.
+On the incident team we bounded `limit` and `amount_inr` with min/max, and modelled string constraints such as a Slack channel or a git branch as separate narrow tools: `post_incident_update` is hard-wired to `#inc-4471`, and the generic `post_message` is disabled. The bank's destination rule (`bank-destination-allowlist`) is a string allow-list on `refund_to_account.destination_account`; the caller campaign forced it after gated still moved ₹15,580 under the amount cap.
 
 ## 7. Docker networking
 

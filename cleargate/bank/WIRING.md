@@ -1,6 +1,6 @@
-# Wiring the bank voice agent into the web UI (judge phone-in)
+# How the bank voice agent is wired into the web UI
 
-`cleargate/bank` is complete on its own (`cleargate bank --demo all --stub`). The web lane needs to add only what is listed here. Nothing in `cleargate/web/*` was touched.
+`cleargate/bank` runs on its own (`cleargate bank --demo all --stub`). This file describes how `cleargate/web/app.py` and the `/bank` page call it.
 
 ## Entry point
 
@@ -19,7 +19,7 @@ result = run_call(text_or_audio, mode="both", phone=DEFAULT_PHONE, stub=force_st
 - `run_call` blocks: the gated mode waits on the broker when a refund over ₹5,000 ESCALATEs. Run it in a thread (`asyncio.to_thread`) as `/api/run` does.
 - Pass the app's own `bus` and `ApprovalBroker` into `Call`. Decisions then stream on `/events` (`type: decision` with `mode` stock/gated, plus `mode_start`/`mode_done` carrying `subject: "bank"`). ESCALATE approvals then resolve through the existing `/api/approvals/{id}` and `/api/approvals/voice` routes. Those routes read `state["run"].broker`, so either point them at the shared broker or set `state["run"]` to an object with `.broker`.
 
-## Routes to add
+## Routes
 
 | Route | Body | Does |
 |---|---|---|
@@ -27,9 +27,9 @@ result = run_call(text_or_audio, mode="both", phone=DEFAULT_PHONE, stub=force_st
 | `POST /api/bank/call/audio` | multipart `file` (webm/wav), form `mode`, `phone` | `run_call(await file.read(), ..., audio_type=file.content_type)` |
 | `GET /api/bank/demo` | none | `DEMO_LINES` (`legit`, `branch`, `statement`, `hinglish`, `under-cap-new-account`) plus `DEMO_PHONES` caller-ID overrides, for one-click buttons |
 
-Guard both POSTs with `require_approver(request)` like the voice routes, because a judge reaches them through the tunnel. Rate-limit them too, since each turn spends Sarvam credits (one TTS, plus one STT per audio turn).
+Both POSTs are guarded with `require_approver(request)`, like the voice routes, because a visitor reaches them through the tunnel. Rate-limit them too, since each turn spends Sarvam credits (one TTS, plus one STT per audio turn).
 
-## UI (judge phone-in panel)
+## UI (`/bank` page)
 
 - A **"Call the bank"** card: a hold-to-talk mic button (MediaRecorder → `/api/bank/call/audio`), a text box (→ `/api/bank/call`), and four demo chips from `/api/bank/demo`.
 - **Split screen, same as the incident run:** left pane STOCK, right pane GATED, filled from `/events` decisions with the turn's `run_id` (its `mode_start` carries `subject: "bank"`), or straight from `result.decisions`. Per row, show `agent`, `tool`, `verb`, `rule` and `reason`. Show `delegation_chain` (caller → voice → payments) on hover.
@@ -40,8 +40,8 @@ Guard both POSTs with `require_approver(request)` like the voice routes, because
 
 ## Runtime / portal (AgntID)
 
-- The payments MCP server on :9101 now also lists `get_customer`, `get_account`, `get_failed_payment`, `refund_to_account` and `get_statement`. The 5 existing tool signatures are unchanged. Refresh the runtime's tool discovery. In the portal: Parameter-Level Policy `refund_to_account.amount_inr` 1–5000, `refund_to_account` pinned as high impact, Intent-Based Controls on. The task intent "failed-payment enquiry for the caller's own account" is sent with the task-open prompt.
-- Payee check: `refund_to_account` credits only the customer's registered account while `PAYEE_CHECK` is on (the default). It is the same server and the same setting for stock and gated, so the panes differ only in AgntID. With it on, stock's new-account transfers reach the tool and the bank system refuses them (₹0 moved), and `under-cap-new-account` passes AgntID on gated and is refused the same way. Running both modes with `PAYEE_CHECK=off` (restart `mcp-serve` with it for MCP runs) shows stock moving money and gated still moving ₹4,000 on `under-cap-new-account`, which is AgntID's gap without a payee check. Under `CLEARGATE_ENFORCER=agntid`, BankEnforcer blocks nothing; it only labels payee refusals. Not yet exercised against the live runtime.
+- The payments MCP server on :9101 now also lists `get_customer`, `get_account`, `get_failed_payment`, `refund_to_account` and `get_statement`. The 5 existing tool signatures are unchanged. Refresh the runtime's tool discovery. In the portal: Parameter-Level Policies `refund_to_account.amount_inr` 1–5000 and `bank-destination-allowlist` (`refund_to_account.destination_account` in the registered accounts on file), `refund_to_account` pinned as high impact, Intent-Based Controls on. The task intent "failed-payment enquiry for the caller's own account" is sent with the task-open prompt.
+- Payee check: `refund_to_account` credits only the customer's registered account while `PAYEE_CHECK` is on (the default). It is the same server and the same setting for stock and gated, so the panes differ only in AgntID. With it on, stock's new-account transfers reach the tool and the bank system refuses them (₹0 moved), and `under-cap-new-account` passes AgntID on gated and is refused the same way. Running both modes with `PAYEE_CHECK=off` (restart `mcp-serve` with it for MCP runs) shows stock moving money. Before `bank-destination-allowlist`, gated still moved ₹4,000 on `under-cap-new-account` (₹15,580 across the campaign); with the rule, gated moves ₹0 (local stand-in). Under `CLEARGATE_ENFORCER=agntid`, BankEnforcer blocks nothing; it only labels payee refusals. The bank flow has not yet run against the live runtime.
 - Live data: `python -m cleargate.mcp.seed` now also applies `fixtures/seed_bank.sql`, which touches only the `bank` schema. Bank runs against Postgres reseed only the bank tables before each mode.
 
 ## Sandbox ledger and campaign

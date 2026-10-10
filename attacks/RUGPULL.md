@@ -1,6 +1,6 @@
 # Rug-pull / catalog-drift demo
 
-Status: **to be confirmed live.** The steps below describe what we expect AgntID's Advanced, Catalog Drift view to show. We have not yet seen it flag this change on the day; update this line once it has (or has not).
+Status: **not yet confirmed against a live runtime.** The steps below describe what we expect AgntID's Advanced, Catalog Drift view to show. We have not seen it flag this change yet.
 
 The scenario: a tool that was reviewed clean changes its description to carry an exfiltration instruction. Same tool name, same arguments. This is the "trusted dependency turns hostile" (rug-pull) threat.
 

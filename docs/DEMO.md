@@ -1,5 +1,7 @@
 # Running the demo
 
+The public site is https://trycleargate.vercel.app. The bank voice agent (`/bank`) is the headline; the payments incident team is the second scenario.
+
 Three levels, from no dependencies to the full live run. If a level fails on stage, drop to the next one down.
 
 | Level | Needs | Enforcement | Use when |
@@ -47,7 +49,7 @@ Checks (all should pass before the demo):
 - [ ] Portal, Runtimes: runtime Connected.
 - [ ] Portal, MCP servers: `payments` (5 tools), `comms` (3 tools), `github` Applied.
 - [ ] Portal, Tools: `run_sql` and `post_message` disabled; profile Medium.
-- [ ] Portal, Access Policies: `limit` 1 to 100, `amount_inr` 1 to 5000.
+- [ ] Portal, Access Policies: `limit` 1 to 100, `amount_inr` 1 to 5000, `refund_to_account.amount_inr` 1 to 5000, and `bank-destination-allowlist` on `refund_to_account.destination_account`.
 - [ ] Inspector: `payments_issue_refund` with `amount_inr=6000` is denied.
 - [ ] `python scripts/runtime_proof.py` exits 0.
 - [ ] `cleargate attack-suite --target agntid` does not say "runtime not ready".

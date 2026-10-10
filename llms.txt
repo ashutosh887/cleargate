@@ -17,7 +17,7 @@ Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), wh
 - Real-world AgntID relevance (15%): the reason column of the README controls table; `reason:` on every rule in `policy.yaml` (PCI DSS, DPDP, RBI mappings, as review evidence, not compliance claims).
 - Depth of AgntID usage (25%): `cleargate/agntid_enforcer.py`; `docs/AGNTID_IMPLEMENTATION.md`; `cleargate evolve` and the policy writer, framed as AgntID's Runtime Operator Workflow (Auto-Discover, Define Policies, Simulate & Test, Enforce at Runtime, Audit & Replay).
 - Technical execution and before/after proof (20%): `cleargate check --stub`; `python verify.py examples/stub-gated.jsonl`; `scripts/runtime_proof.py` (live only); README "Results".
-- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the showcase site; demo video (link added at submission).
+- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the site, https://trycleargate.vercel.app; the demo video.
 
 ## Key files
 
@@ -65,7 +65,7 @@ All measured on 10 Oct 2026.
 - Policy writer (local stand-in): 19 of 20 attacks blocked, 0 of 13 needed calls broken, 7 of 7 out-of-task calls stopped.
 - Coverage matrix (local stand-in): 85 cases; stock 67 of 85 reached a tool; 11 cases can only be stopped by AgntID's intent check, so the stand-in cannot prove them.
 - CI: PR #3 loosens the policy so the fix agent merges without approval; the gate fails with "NO-GO: merged by the agent with no human approval".
-- Live AgntID runtime: pending. Numbers come at submission.
+- Live AgntID runtime: pending. Every number above is from the local stand-in, labelled "not AgntID".
 
 ## Limitations
 
