@@ -5,135 +5,303 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClearGate: on-call agents, gated by AgntID</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
+  /* ClearGate stage UI. Idea: a bank's maker-checker desk. Every agent call gets an ink stamp
+     (ALLOW / NARROW / BLOCK / ESCALATE); the engineer's approval is the signature. */
   :root {
-    --bg: #0a0d12; --panel: #121821; --panel2: #18202b; --line: #263040; --text: #f1f4f8; --muted: #9aa6b6; --dim: #6b7787;
-    --allow: #34d17b; --narrow: #4f9dff; --block: #ff5a5a; --escalate: #ffb020; --unguarded: #7c8696;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ink: #0f1522; --slate: #172030; --slate2: #1e2a3d; --rule: #2a3750; --paper: #eef1f6; --muted: #a3afc2; --dim: #6f7c92;
+    --allow: #3ddc97; --narrow: #5aa9ff; --block: #ff5d5d; --escalate: #ffb547; --unguarded: #8a95a8; --replay: #c7a6ff;
+    --leak-bg: #1d1218;
+    --sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  body { margin: 0; background: var(--ink); color: var(--paper); font: 400 17px/1.4 var(--sans);
          display: flex; flex-direction: column; overflow: hidden; }
-  button { background: var(--panel2); color: var(--text); border: 1px solid #36435a; border-radius: 8px; padding: 9px 16px;
-           font: 600 16px/1.2 inherit; font-family: inherit; cursor: pointer; }
+  button { background: var(--slate2); color: var(--paper); border: 1px solid #3a4862; border-radius: 6px; padding: 9px 16px;
+           font: 600 16px/1.2 var(--sans); cursor: pointer; }
   button:hover { border-color: var(--muted); }
-  button.primary { background: var(--narrow); border-color: var(--narrow); color: #031025; }
-  button:disabled { opacity: .45; cursor: default; }
-  kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--narrow); outline-offset: 2px; }
+  button.primary { background: var(--paper); border-color: var(--paper); color: var(--ink); font-weight: 700; }
+  button:disabled { opacity: .4; cursor: default; }
+  kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 5px; color: var(--muted); margin-left: 4px; }
 
-  header { display: flex; align-items: center; gap: 18px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 26px; margin: 0; font-weight: 800; letter-spacing: -.01em; }
-  header h1 span { color: var(--muted); font-weight: 500; }
-  header h1 { white-space: nowrap; }
-  header .line { color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* header */
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
+  header h1 { margin: 0; white-space: nowrap; font: 800 28px/1 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
+  header h1 .mark { width: 26px; height: 26px; display: inline-block; flex: none; }
+  header h1 span { color: var(--muted); font-weight: 500; font-size: 18px; font-stretch: 100%; letter-spacing: 0; }
+  header .line { color: var(--dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .spacer { flex: 1; }
-  .badge { font: 700 14px/1 inherit; padding: 8px 12px; border-radius: 999px; border: 2px solid; white-space: nowrap; letter-spacing: .02em; }
+  .badge { font: 700 14px/1 var(--sans); padding: 8px 12px; border-radius: 4px; border: 2px solid; white-space: nowrap; }
   .badge.standin { color: var(--escalate); border-color: var(--escalate); }
   .badge.agntid { color: var(--allow); border-color: var(--allow); }
-  .badge.replay { color: #c7a6ff; border-color: #c7a6ff; }
+  .badge.replay { color: var(--replay); border-color: var(--replay); }
 
-  .promptbar { display: flex; gap: 10px; padding: 12px 22px; border-bottom: 1px solid var(--line); align-items: center; }
-  .promptbar input { flex: 1; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-                     padding: 11px 14px; font: 17px/1.3 inherit; font-family: inherit; }
+  .promptbar { display: flex; gap: 10px; padding: 10px 22px; border-bottom: 1px solid var(--rule); align-items: center; }
+  .promptbar input { flex: 1; background: var(--slate); color: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
+                     padding: 10px 14px; font: 16px/1.3 var(--sans); }
   .promptbar input:focus { outline: 2px solid var(--narrow); border-color: transparent; }
-  .mic { width: 46px; height: 44px; padding: 0; font-size: 20px; display: grid; place-items: center; }
+  .mic { width: 44px; height: 42px; padding: 0; font-size: 19px; display: grid; place-items: center; }
   .mic.on { background: var(--block); border-color: var(--block); animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 90, 90, .25); } }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(255, 93, 93, .25); } }
   #status { color: var(--muted); font-size: 14px; min-width: 0; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .strip { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
-  .stat { background: var(--panel); padding: 10px 22px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  .stat .label { color: var(--muted); font-size: 14px; text-transform: uppercase; letter-spacing: .06em; flex-basis: 100%; }
-  .stat .vs { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
-  .stat b { font-size: 34px; line-height: 1; }
-  .stat small { color: var(--muted); font-size: 14px; }
-  .stat .bad { color: var(--block); } .stat .good { color: var(--allow); } .stat .blue { color: var(--narrow); }
+  /* the story: three beats, readable from the back of the room */
+  .strip { display: grid; grid-template-columns: 1fr 1.35fr 1fr; border-bottom: 1px solid var(--rule); }
+  .beat { position: relative; padding: 12px 22px 14px 64px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .beat + .beat { border-left: 1px solid var(--rule); }
+  .beat .n { position: absolute; left: 20px; top: 12px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid currentColor;
+             display: grid; place-items: center; font: 800 16px/1 var(--sans); }
+  .beat h3 { margin: 0; font: 800 20px/1.1 var(--sans); font-stretch: 110%; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .beat.stock { background: linear-gradient(90deg, rgba(255, 93, 93, .10), transparent 85%); }
+  .beat.stock .n, .beat.stock h3 { color: var(--block); }
+  .beat.gate .n { color: var(--narrow); }
+  .beat.sign .n { color: var(--allow); }
+  .beat .big { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+  .beat .big b { font: 900 46px/.95 var(--sans); font-stretch: 75%; }
+  .beat .big small { color: var(--muted); font-size: 15px; }
+  .beat .sub { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .beat .sub b { color: var(--paper); font-weight: 700; }
+  .bad { color: var(--block); } .good { color: var(--allow); } .blue { color: var(--narrow); }
+  .tally { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tally span { display: inline-flex; align-items: baseline; gap: 7px; padding: 4px 10px 4px 8px; border: 2px solid; border-radius: 4px;
+                font: 800 13px/1 var(--sans); font-stretch: 90%; letter-spacing: .04em; }
+  .tally span b { font: 900 26px/1 var(--sans); font-stretch: 75%; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+  .tally .t-ALLOW { color: var(--allow); } .tally .t-NARROW { color: var(--narrow); }
+  .tally .t-BLOCK { color: var(--block); } .tally .t-ESCALATE { color: var(--escalate); }
+  .tally span.zero { opacity: .35; }
+  #sign-state { font: 800 26px/1.1 var(--sans); font-stretch: 85%; color: var(--dim); }
+  #sign-state.waiting { color: var(--escalate); }
+  #sign-state.signed { color: var(--allow); }
+  #sign-state.refused { color: var(--block); }
+  #sign-state code { font-family: var(--mono); font-size: 24px; letter-spacing: .08em; }
 
-  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); min-height: 0; }
-  .pane { background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
-  .pane-head { padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
-  .pane-head h2 { margin: 0; font-size: 21px; white-space: nowrap; }
-  .pane-head .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .pane-head .src { color: var(--muted); font-size: 14px; }
-  #pane-stock .pane-head h2::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--block); margin-right: 10px; }
-  #pane-gated .pane-head h2::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--allow); margin-right: 10px; }
-  .rows { overflow-y: auto; padding: 10px 14px 60px; flex: 1; }
+  /* panes */
+  main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 0; }
+  .pane { display: flex; flex-direction: column; min-height: 0; }
+  #pane-stock { background: var(--leak-bg); border-right: 1px solid var(--rule); }
+  #pane-gated { background: var(--ink); }
+  .pane-head { padding: 10px 20px; border-bottom: 1px solid var(--rule); display: flex; align-items: baseline; gap: 12px; }
+  #pane-stock .pane-head { background: rgba(255, 93, 93, .08); }
+  #pane-gated .pane-head { background: var(--slate); }
+  .pane-head h2 { margin: 0; font: 800 22px/1.1 var(--sans); font-stretch: 110%; white-space: nowrap; }
+  #pane-stock .pane-head h2 { color: #ffb3b3; }
+  .pane-head .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--muted); font-size: 14px; }
+  .rows { overflow-y: auto; padding: 8px 16px 60px; flex: 1; }
 
-  .card { background: var(--panel); border-radius: 10px; margin: 8px 0; padding: 11px 14px; border-left: 6px solid var(--unguarded); animation: in .3s ease-out; }
-  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
-  .card .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .pill { font: 800 13px/1 inherit; letter-spacing: .06em; padding: 5px 9px; border-radius: 6px; color: #06090d; background: var(--unguarded); }
-  .card .tool { font-family: var(--mono); font-size: 17px; font-weight: 600; }
+  /* decision cards */
+  .card { background: var(--slate); border-radius: 4px; margin: 8px 0; padding: 10px 14px 10px 16px; border-left: 5px solid var(--unguarded); animation: in .25s ease-out; }
+  #pane-stock .card { background: #221820; }
+  @keyframes in { from { opacity: 0; } }
+  .card .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  /* the stamp */
+  .pill { font: 900 15px/1 var(--sans); font-stretch: 85%; letter-spacing: .08em; padding: 5px 9px 4px; border-radius: 3px;
+          color: var(--unguarded); border: 2.5px solid currentColor; background: transparent; }
+  .card .tool { font-family: var(--mono); font-size: 18px; font-weight: 600; }
   .card .agent { color: var(--muted); font-size: 15px; }
-  .card .args { font-family: var(--mono); font-size: 14px; color: #b9c3d0; margin-top: 4px; word-break: break-all; }
-  .card .rule { margin-top: 5px; font-size: 15px; }
-  .card .rule code { font-family: var(--mono); color: var(--muted); font-size: 14px; }
-  .card .reason { color: #dfe5ec; }
-  .card .agntid { margin-top: 5px; font-size: 14px; color: #ffd0d0; font-family: var(--mono); }
-  .card .meta { margin-top: 5px; color: var(--dim); font-size: 13.5px; font-family: var(--mono); display: flex; gap: 14px; flex-wrap: wrap; }
+  .card .args { font-family: var(--mono); font-size: 13.5px; color: #b6c0cf; margin-top: 5px; word-break: break-all; }
+  .card .rule { margin-top: 5px; font-size: 15.5px; }
+  .card .rule code { font-family: var(--mono); color: var(--muted); font-size: 13.5px; }
+  .card .reason { color: #e2e7ee; }
+  .card .agntid { margin-top: 4px; font-size: 13.5px; color: #ffc9c9; font-family: var(--mono); }
+  .card .meta { margin-top: 5px; color: var(--dim); font-size: 12.5px; font-family: var(--mono); display: flex; gap: 14px; flex-wrap: wrap; }
   .card .chain b { color: var(--muted); font-weight: 600; }
-  .card .flag { margin-top: 6px; font-weight: 700; font-size: 15px; }
-  .card.outside { box-shadow: inset 0 0 0 2px rgba(255, 90, 90, .6); }
+  .card .flag { margin-top: 6px; font-weight: 800; font-size: 16px; }
   .card.outside .flag { color: var(--block); }
-  .v-ALLOW { border-left-color: var(--allow); } .v-ALLOW .pill { background: var(--allow); }
-  .v-NARROW { border-left-color: var(--narrow); } .v-NARROW .pill { background: var(--narrow); }
-  .v-BLOCK { border-left-color: var(--block); } .v-BLOCK .pill { background: var(--block); }
-  .v-ESCALATE { border-left-color: var(--escalate); } .v-ESCALATE .pill { background: var(--escalate); }
-  .v-UNGUARDED .pill { background: var(--unguarded); }
-  .slim { color: var(--muted); font-size: 14.5px; padding: 6px 4px 6px 14px; margin: 4px 0; border-left: 3px solid var(--line); animation: in .3s ease-out; }
-  .slim b { color: var(--text); font-weight: 600; }
-  .slim.narrow { border-left-color: var(--narrow); color: #cfe2ff; font-size: 16px; }
-  .slim.approved { border-left-color: var(--allow); color: #c9f5dc; font-size: 16px; }
-  .slim.rejected { border-left-color: var(--block); color: #ffd0d0; font-size: 16px; }
+  .v-ALLOW { border-left-color: var(--allow); } .v-ALLOW .pill { color: var(--allow); }
+  .v-NARROW { border-left-color: var(--narrow); } .v-NARROW .pill { color: var(--narrow); }
+  .v-BLOCK { border-left-color: var(--block); } .v-BLOCK .pill { color: #fff; background: var(--block); border-color: var(--block); }
+  .v-ESCALATE { border-left-color: var(--escalate); } .v-ESCALATE .pill { color: var(--ink); background: var(--escalate); border-color: var(--escalate); }
+  .v-UNGUARDED .pill { color: var(--unguarded); }
+  #pane-gated .card.v-BLOCK { background: linear-gradient(90deg, rgba(255, 93, 93, .13), var(--slate) 60%); }
+  #pane-gated .card.v-BLOCK .pill { transform: rotate(-3deg); animation: stamp .35s cubic-bezier(.2, 1.6, .4, 1); }
+  @keyframes stamp { from { transform: rotate(-9deg) scale(1.7); opacity: 0; } }
+  /* stock: a call outside the task that ran is the leak */
+  #pane-stock .card.outside { background: #3a1820; border-left-color: var(--block); box-shadow: inset 0 0 0 2px rgba(255, 93, 93, .7); }
+  #pane-stock .card.outside .top::after { content: "RAN, NO GATE"; margin-left: auto; font: 900 14px/1 var(--sans); font-stretch: 85%; letter-spacing: .08em;
+    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; transform: rotate(2deg); }
+  #pane-stock .card.outside .tool { color: #ffd2d2; }
+  /* in-task stock calls shrink to one line so the leaks stand out */
+  #pane-stock .card:not(.outside) { padding: 6px 12px; margin: 5px 0; opacity: .8; }
+  #pane-stock .card:not(.outside) :is(.args, .rule, .meta, .agntid) { display: none; }
+  #pane-stock .card:not(.outside) .pill { font-size: 12px; padding: 3px 6px 2px; border-width: 2px; }
+  #pane-stock .card:not(.outside) .tool { font-size: 15.5px; }
 
-  .approval { margin-top: 10px; padding: 12px; border: 2px dashed var(--escalate); border-radius: 8px; background: rgba(255, 176, 32, .07); }
-  .approval .say { font-size: 22px; font-weight: 700; }
-  .approval .say code { font-family: var(--mono); color: var(--escalate); font-size: 26px; letter-spacing: .08em; }
+  .slim { color: var(--muted); font-size: 14.5px; padding: 5px 4px 5px 14px; margin: 4px 0; border-left: 3px solid var(--rule); animation: in .25s ease-out; }
+  .slim b { color: var(--paper); font-weight: 600; }
+  .slim code { font-family: var(--mono); font-size: 13.5px; }
+  .slim.narrow { border-left-color: var(--narrow); color: #d3e6ff; font-size: 16.5px; background: rgba(90, 169, 255, .08); padding: 8px 12px 8px 14px; }
+  .slim.narrow b:first-child { color: var(--narrow); font-weight: 900; letter-spacing: .06em; }
+  .slim.approved { border-left-color: var(--allow); color: #cbf6e1; font-size: 16.5px; background: rgba(61, 220, 151, .08); padding: 8px 12px 8px 14px; }
+  .slim.rejected { border-left-color: var(--block); color: #ffd0d0; font-size: 16.5px; }
+
+  /* approval: the signature line */
+  .approval { margin-top: 10px; padding: 12px 14px; border: 2px dashed var(--escalate); border-radius: 4px; background: rgba(255, 181, 71, .07); }
+  .approval .say { font: 800 24px/1.2 var(--sans); }
+  .approval .say code { font-family: var(--mono); color: var(--escalate); font-size: 28px; letter-spacing: .1em; }
   .approval .actions { display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
   .approval .approve { background: var(--allow); border-color: var(--allow); color: #04140b; }
   .approval .reject { background: transparent; border-color: var(--block); color: var(--block); }
   .approval .heard { color: var(--muted); font-size: 14px; font-family: var(--mono); }
-  .approval .calling { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-weight: 700; color: var(--escalate); }
+  .approval .calling { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-weight: 800; color: var(--escalate); }
   .approval .calling i { width: 10px; height: 10px; border-radius: 50%; background: var(--escalate); animation: callblink 1s infinite; }
   @keyframes callblink { 50% { opacity: .2; } }
-  .approval .oncall-url { font-family: var(--mono); font-size: 20px; color: var(--text); word-break: break-all; }
-  .bypass { margin-top: 8px; padding: 8px 12px; border-radius: 6px; background: rgba(255, 90, 90, .12); color: #ffd6d6; font-size: 16px; }
-  .bypass b { color: var(--block); font-size: 18px; }
+  .approval .oncall-url { font-family: var(--mono); font-size: 19px; color: var(--paper); word-break: break-all; }
+  .bypass { margin-top: 8px; padding: 9px 12px; border-radius: 3px; background: rgba(255, 93, 93, .14); border: 1px solid rgba(255, 93, 93, .5); color: #ffd9d9; font-size: 16px; }
+  .bypass b { color: var(--block); font-size: 19px; font-weight: 900; }
+  .bypass code { font-family: var(--mono); }
 
-  #verdict { position: fixed; inset: 0; background: rgba(6, 8, 12, .96); display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; padding: 24px 16px; }
+  /* go-live */
+  #verdict { position: fixed; inset: 0; background: rgba(8, 11, 18, .95); display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; padding: 24px 16px; }
   #verdict.show { display: flex; }
-  .vcard { max-width: 1000px; width: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 30px 38px; }
-  .vcard h3 { margin: 0; color: var(--muted); font-size: 20px; font-weight: 600; letter-spacing: .02em; }
-  .vcard .big { font-size: 84px; font-weight: 900; letter-spacing: .03em; margin: 4px 0 14px; line-height: 1; }
-  .vcard .big.go { color: var(--allow); } .vcard .big.nogo { color: var(--block); } .vcard .big.cond { color: var(--escalate); font-size: 60px; }
+  .vcard { max-width: 1080px; width: 100%; background: var(--slate); border: 1px solid var(--rule); border-radius: 6px; padding: 28px 40px 26px; position: relative; }
+  .vcard h3 { margin: 0; color: var(--muted); font: 600 20px/1.2 var(--sans); }
+  .vcard .big { display: inline-block; font: 900 104px/1 var(--sans); font-stretch: 80%; letter-spacing: .04em; margin: 22px 0 22px 6px;
+                padding: 6px 26px 2px; border: 7px solid currentColor; border-radius: 8px; transform: rotate(-4deg); transform-origin: left center;
+                animation: stamp .45s cubic-bezier(.2, 1.5, .4, 1); }
+  .vcard .big.go { color: var(--allow); } .vcard .big.nogo { color: var(--block); } .vcard .big.cond { color: var(--escalate); font-size: 64px; }
   .vcard .bignote { color: var(--escalate); font-size: 18px; margin: -6px 0 14px; }
-  .vgrid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; }
+  .vgrid { display: grid; grid-template-columns: 1.35fr 1fr; gap: 32px; }
   .checks { list-style: none; margin: 0; padding: 0; }
-  .checks li { font-size: 21px; margin: 9px 0; display: flex; gap: 12px; align-items: baseline; }
+  .checks li { font-size: 22px; margin: 10px 0; display: flex; gap: 12px; align-items: baseline; }
   .checks li .ok { color: var(--allow); font-weight: 900; } .checks li .no { color: var(--block); font-weight: 900; }
-  .checks li code { font-family: var(--mono); font-size: 17px; }
-  .evidence h4 { margin: 4px 0 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-  .evidence ul { margin: 0; padding-left: 18px; font-size: 16px; } .evidence li { margin: 7px 0; }
+  .checks li code { font-family: var(--mono); font-size: 18px; }
+  .checks li small { color: var(--muted); }
+  .evidence { border-left: 1px solid var(--rule); padding-left: 24px; }
+  .evidence h4 { margin: 4px 0 8px; font: 700 16px/1.2 var(--sans); color: var(--muted); }
+  .evidence ul { margin: 0; padding-left: 18px; font-size: 15.5px; color: #d6dce6; } .evidence li { margin: 7px 0; }
   .evidence .note { color: var(--dim); font-size: 13px; margin-top: 10px; }
-  .vcard .compare { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 18px; color: #dfe5ec; }
-  .vcard .foot { color: var(--dim); font-size: 13.5px; margin-top: 12px; font-family: var(--mono); word-break: break-all; }
+  .vcard .compare { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--rule); font-size: 19px; color: #e2e7ee; }
+  .vcard .foot { color: var(--dim); font-size: 13px; margin-top: 10px; font-family: var(--mono); word-break: break-all; }
 
+  /* AgntID runtime enforcement flow, per gated call */
+  .flow { margin-top: 8px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; font: 700 12.5px/1.15 var(--sans); font-stretch: 92%; }
+  .flow span { padding: 5px 7px 4px; background: rgba(255, 255, 255, .04); color: var(--dim); border-top: 3px solid var(--rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .flow .pass { color: #bfeedd; border-top-color: rgba(61, 220, 151, .55); }
+  .flow .hit-BLOCK { color: #fff; background: rgba(255, 93, 93, .28); border-top-color: var(--block); }
+  .flow .hit-ESCALATE { color: #fff; background: rgba(255, 181, 71, .22); border-top-color: var(--escalate); }
+  .flow .hit-ALLOW { color: #fff; background: rgba(61, 220, 151, .2); border-top-color: var(--allow); }
+  .flow .trace { color: var(--muted); border-top-color: var(--muted); }
+  .flowcap { margin-top: 4px; font-size: 13.5px; color: var(--muted); }
+  .flowcap b { color: var(--paper); }
   .empty { color: var(--dim); font-size: 16px; padding: 24px 8px; }
+  /* judge phone-in: the bank's voice support line, stock vs gated */
+  #bank { position: fixed; inset: 0; z-index: 9; background: var(--ink); display: none; flex-direction: column; overflow: hidden; }
+  #bank.show { display: flex; }
+  .bank-top { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
+  .bank-top h2 { margin: 0; font: 800 28px/1 var(--sans); font-stretch: 112%; letter-spacing: -.01em; white-space: nowrap; }
+  .bank-top .who { color: var(--muted); font-size: 14px; min-width: 0; }
+  .bank-top .who code { font-family: var(--mono); color: var(--paper); }
+  .bank-dial { display: flex; gap: 12px; align-items: center; padding: 12px 22px 10px; }
+  .hold { width: 62px; height: 62px; border-radius: 50%; padding: 0; display: grid; place-items: center; flex: none; touch-action: none;
+          user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .hold svg { width: 26px; height: 26px; pointer-events: none; }
+  .hold.on { background: var(--block); border-color: var(--block); animation: pulse 1s infinite; }
+  .hold-label { font: 700 13px/1.15 var(--sans); color: var(--muted); width: 64px; flex: none; }
+  #bank-text { flex: 1; min-width: 0; background: var(--slate); color: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
+               padding: 12px 14px; font: 16px/1.3 var(--sans); }
+  #bank-text:focus { outline: 2px solid var(--narrow); border-color: transparent; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 22px 12px; border-bottom: 1px solid var(--rule); }
+  .chip { padding: 7px 12px 6px; border-radius: 4px; font: 600 14.5px/1.2 var(--sans); text-align: left; }
+  .chip .k { font: 900 11.5px/1 var(--sans); font-stretch: 85%; letter-spacing: .08em; margin-right: 7px; padding: 2px 5px 1px; border: 1.5px solid currentColor; border-radius: 2px; }
+  .chip.legit .k { color: var(--allow); } .chip.attack .k { color: var(--block); }
+  .chiplist { display: contents; }
+  .chips .lang { margin-left: auto; font: 600 12px/1 var(--mono); color: var(--narrow); border: 1.5px solid currentColor; padding: 4px 6px 3px; border-radius: 3px; flex: none; align-self: center; }
+  .chips .st { color: var(--muted); font-size: 14px; align-self: center; max-width: 46ch; }
+  .chips .lang[hidden] + .st { margin-left: auto; }
+  .chips .st.err { color: var(--block); }
+  .visbeat { display: none; margin: 0; padding: 9px 22px; border-bottom: 1px solid var(--rule); background: rgba(90, 169, 255, .08); color: #d3e6ff; font-size: 16.5px; }
+  .visbeat.show { display: block; }
+  .visbeat b.v { color: var(--narrow); font-weight: 900; letter-spacing: .06em; margin-right: 6px; }
+  .bank-panes { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-height: 0; }
+  .bpane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  #bank-stock { background: var(--leak-bg); border-right: 1px solid var(--rule); }
+  #bank-stock .pane-head { background: rgba(255, 93, 93, .08); }
+  #bank-stock .pane-head h2 { color: #ffb3b3; }
+  #bank-gated .pane-head { background: var(--slate); }
+  #bank .rows { padding: 6px 16px 14px; }
+  #bank .rows.settled > * { animation: none; }
+  #bank-stock .card { background: #221820; }
+  #bank-stock .card:not(.leak) { padding: 6px 12px; margin: 5px 0; opacity: .8; }
+  #bank-stock .card:not(.leak) :is(.args, .rule, .meta) { display: none; }
+  #bank-stock .card:not(.leak) .pill { font-size: 12px; padding: 3px 6px 2px; border-width: 2px; }
+  #bank-stock .card:not(.leak) .tool { font-size: 15.5px; }
+  #bank-stock .card.leak { background: #3a1820; border-left-color: var(--block); box-shadow: inset 0 0 0 2px rgba(255, 93, 93, .7); }
+  #bank-stock .card.leak .top::after { content: "REACHED THE TOOL"; margin-left: auto; font: 900 14px/1 var(--sans); font-stretch: 85%; letter-spacing: .08em;
+    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; transform: rotate(2deg); }
+  #bank-stock .card.leak.moved .top::after { content: "MONEY MOVED, NO GATE"; }
+  #bank-gated .card.v-BLOCK { background: linear-gradient(90deg, rgba(255, 93, 93, .13), var(--slate) 60%); }
+  #bank-gated .card.v-BLOCK .pill { transform: rotate(-3deg); animation: stamp .35s cubic-bezier(.2, 1.6, .4, 1); }
+  .stage { font: 800 11.5px/1 var(--sans); font-stretch: 92%; letter-spacing: .07em; text-transform: uppercase; padding: 4px 7px 3px;
+           border: 1.5px solid currentColor; border-radius: 3px; white-space: nowrap; }
+  .stage.app { color: var(--paper); background: rgba(238, 241, 246, .1); }
+  .stage.sim { color: var(--escalate); border-style: dashed; }
+  .stage.agntid { color: var(--allow); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .flow.six { grid-template-columns: repeat(6, 1fr); }
+  .flow .hit-APP { color: var(--ink); background: var(--paper); border-top-color: var(--paper); }
+  .bfoot { border-top: 1px solid var(--rule); padding: 10px 18px 12px; display: flex; flex-direction: column; gap: 6px; background: rgba(0, 0, 0, .18); }
+  .money { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+  .money span { font: 800 17px/1.1 var(--sans); }
+  .money b { font: 900 40px/.95 var(--sans); font-stretch: 75%; }
+  .money.bad b { color: var(--block); } .money.good b { color: var(--allow); } .money.wait b { color: var(--dim); }
+  .facts { color: var(--muted); font-size: 14.5px; font-variant-numeric: tabular-nums; }
+  .facts b { color: var(--paper); } .facts b.bad { color: var(--block); } .facts b.good { color: var(--allow); }
+  .says { font-size: 16px; color: #e2e7ee; display: flex; gap: 10px; align-items: baseline; }
+  .says > span:first-child { color: var(--dim); font-size: 13px; white-space: nowrap; flex: none; }
+  .says button { padding: 3px 10px; font-size: 13px; flex: none; }
+  .says .reason { min-width: 0; flex: 1; }
+  .links a { min-width: 0; overflow-wrap: anywhere; }
+  .links { display: flex; gap: 14px; flex-wrap: wrap; font: 12.5px/1.3 var(--mono); }
+  .links a { color: var(--muted); }
+  .links a.ok { color: var(--allow); }
+  #bank .empty { font-size: 15px; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
+  @media (max-width: 1100px) { .strip { grid-template-columns: 1fr 1fr; } .beat.sign { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); } header .line { display: none; } }
   @media (max-width: 900px) {
-    body { overflow: auto; } main { grid-template-columns: 1fr; } .strip { grid-template-columns: 1fr; }
-    header { flex-wrap: wrap; } .vgrid { grid-template-columns: 1fr; } .rows { max-height: 70vh; }
+    body { overflow: auto; } main { grid-template-columns: 1fr; } .strip { grid-template-columns: 1fr; } .beat + .beat { border-left: 0; border-top: 1px solid var(--rule); }
+    header { flex-wrap: wrap; } .vgrid { grid-template-columns: 1fr; } .evidence { border-left: 0; padding-left: 0; } .rows { max-height: 70vh; }
+  }
+  @media (max-width: 600px) {
+    header { padding: 10px 14px; gap: 10px; } header h1 { font-size: 24px; } header h1 span { display: none; }
+    .promptbar { padding: 10px 14px; flex-wrap: wrap; } .promptbar input { min-width: 0; flex-basis: calc(100% - 60px); }
+    main > .pane { min-width: 0; } .pane-head { flex-wrap: wrap; } .pane-head h2 { white-space: normal; }
+  }
+  @media (max-width: 900px) {
+    #bank > * { flex-shrink: 0; }
+    .bank-top .badge { white-space: normal; font-size: 12.5px; padding: 6px 9px; }
+    #bank { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .bank-top { flex-wrap: wrap; gap: 6px 12px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); }
+    .bank-top h2 { font-size: 24px; } .bank-top .who { order: 3; flex-basis: 100%; }
+    .bank-top .spacer { display: none; } #bank-close { order: 1; margin-left: auto; } .bank-top .badge { order: 2; }
+    .bank-dial { padding: 12px 14px 10px; flex-wrap: wrap; }
+    .hold { width: 72px; height: 72px; } .hold svg { width: 30px; height: 30px; }
+    .chips { padding: 0 14px 12px; }
+    #bank-text { order: 1; flex-basis: 100%; } #bank-send { margin-left: auto; padding: 12px 22px; }
+    .visbeat { padding-left: 14px; padding-right: 14px; }
+    .chips .st { flex-basis: 100%; margin-left: 0; max-width: none; }
+    .chips .lang { margin-left: 0; }
+    .bank-panes { grid-template-columns: minmax(0, 1fr); flex: none; }
+    #bank-stock { border-right: 0; border-bottom: 1px solid var(--rule); }
+    .bpane { min-height: auto; }
+    #bank .rows { overflow: visible; flex: none; max-height: none; padding: 4px 10px 10px; }
+    .bfoot { padding: 10px 14px 14px; }
+    .money b { font-size: 38px; }
+    #bank .flow, #bank .flow.six { font-size: 11.5px; grid-template-columns: repeat(3, 1fr); }
   }
 </style>
 </head>
 <body>
 <header>
-  <h1>ClearGate <span>On-call agents, gated by AgntID</span></h1>
-  <span class="line">The agent acts. AgntID decides. The engineer signs.</span>
+  <h1><svg class="mark" viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="3" width="4" height="21" rx="1" fill="#eef1f6"/><rect x="20" y="3" width="4" height="21" rx="1" fill="#eef1f6"/><rect x="6" y="9" width="14" height="4" fill="#ff5d5d"/><rect x="6" y="15" width="14" height="4" fill="#3ddc97"/></svg>ClearGate <span>on-call agents, gated by AgntID</span></h1>
   <span class="spacer"></span>
   <span id="brain" class="line" title="Which model drives the agents"></span>
   <span id="enforcer" class="badge standin" title="Which enforcer decides the right-hand pane">checking enforcer…</span>
+  <button id="bank-open" title="Judge phone-in: call the bank's voice agent (key B)">Call the bank <kbd>B</kbd></button>
   <button id="replay" title="Replay the latest signed record (key R)">Replay <kbd>R</kbd></button>
   <button id="go" disabled title="Key G">Go-live <kbd>G</kbd></button>
 </header>
@@ -147,18 +315,28 @@
 </div>
 
 <div class="strip">
-  <div class="stat"><span class="label">Out-of-task attempts that reached a tool</span>
-    <span class="vs"><small>stock</small><b class="bad" id="s-reached">0</b><small id="s-of"></small><small class="gname">AgntID</small><b class="good" id="g-reached">0</b>
-    <small id="g-stopped"></small></span></div>
-  <div class="stat"><span class="label">Tools visible (NARROW)</span>
-    <span class="vs"><small>stock</small><b id="s-tools">–</b><small class="gname">AgntID</small><b class="blue" id="g-tools">–</b></span></div>
-  <div class="stat"><span class="label">Tool-schema context tokens</span>
-    <span class="vs"><b id="tok-before">–</b><small>→</small><b class="blue" id="tok-after">–</b></span></div>
+  <section class="beat stock"><span class="n">1</span>
+    <h3>Stock agent acts alone</h3>
+    <div class="big"><b class="bad" id="s-reached">0</b><small id="s-of">out-of-task calls ran</small></div>
+    <div class="sub"><b id="s-tools">–</b> tools visible. Follows the instruction hidden in issue #1.</div>
+  </section>
+  <section class="beat gate"><span class="n">2</span>
+    <h3><span class="dname">AgntID</span> decides every call</h3>
+    <div class="big"><div class="tally" id="tally">
+        <span class="t-ALLOW zero">ALLOW <b id="t-ALLOW">0</b></span><span class="t-NARROW zero">NARROW <b id="t-NARROW">0</b></span>
+        <span class="t-BLOCK zero">BLOCK <b id="t-BLOCK">0</b></span><span class="t-ESCALATE zero">ESCALATE <b id="t-ESCALATE">0</b></span></div></div>
+    <div class="sub"><b class="good" id="g-reached">0</b> out-of-task calls reached a tool<span id="g-stopped"></span>. Tools visible <b class="blue" id="g-tools">–</b>, context <b id="tok-before">–</b> → <b class="blue" id="tok-after">–</b> tokens.</div>
+  </section>
+  <section class="beat sign"><span class="n">3</span>
+    <h3>The engineer signs the merge</h3>
+    <div id="sign-state">No merge requested yet</div>
+    <div class="sub" id="sign-sub">One spoken code approves one exact set of merge arguments.</div>
+  </section>
 </div>
 
 <main>
   <section class="pane" id="pane-stock">
-    <div class="pane-head"><h2>Stock agents (no gate)</h2><span class="src">holds the PAT itself · calls MCP servers directly</span></div>
+    <div class="pane-head"><h2>Stock agents, no gate</h2><span class="src">holds the PAT itself and calls MCP servers directly</span></div>
     <div class="rows"><div class="empty">Waiting for a run. Speak or type the incident, or press <kbd>R</kbd> to replay the last signed record.</div></div>
   </section>
   <section class="pane" id="pane-gated">
@@ -169,7 +347,47 @@
 
 <div id="verdict"><div class="vcard" id="verdict-card"></div></div>
 
+<div id="bank" role="dialog" aria-modal="true" aria-labelledby="bank-title">
+  <div class="bank-top">
+    <h2 id="bank-title">Call the bank</h2>
+    <span class="who">You are the caller on <code id="bank-phone">+91-98123-45678</code>. One voice support agent, run twice: no gate on the left, gated on the right.</span>
+    <span class="spacer"></span>
+    <span id="bank-badge" class="badge standin">checking enforcer…</span>
+    <button id="bank-close" title="Back to the incident (Esc)">Close <kbd>Esc</kbd></button>
+  </div>
+  <div class="bank-dial">
+    <button id="bank-mic" class="hold" aria-label="Hold to talk" title="Hold while you speak, release to send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></svg></button>
+    <span class="hold-label" id="bank-hold-label">Hold to talk</span>
+    <input id="bank-text" autocomplete="off" spellcheck="false" enterkeyhint="send" placeholder="…or type what the caller says">
+    <button id="bank-send" class="primary">Call</button>
+  </div>
+  <div class="chips"><span id="bank-chips" class="chiplist"></span><span class="lang" id="bank-lang" hidden></span><span class="st" id="bank-st">Pick a call, hold the mic, or type.</span></div>
+  <p class="visbeat" id="bank-vis"></p>
+  <div class="bank-panes">
+    <section class="bpane" id="bank-stock">
+      <div class="pane-head"><h2>Stock voice agent, no gate</h2><span class="src">every tool visible, acts on what the caller says</span></div>
+      <div class="rows"><div class="empty">No call yet.</div></div>
+      <div class="bfoot"></div>
+    </section>
+    <section class="bpane" id="bank-gated">
+      <div class="pane-head"><h2>Same agent, gated</h2><span class="src" id="bank-gated-src"></span></div>
+      <div class="rows"><div class="empty">Same caller, same agent, same bank tools.</div></div>
+      <div class="bfoot"></div>
+    </section>
+  </div>
+</div>
+
 <script>
+// Approver key: from ?k= once, then kept for this tab and removed from the address bar (never shown on the projector).
+const CG_KEY = (() => {
+  const u = new URL(location.href), k = u.searchParams.get("k") || sessionStorage.getItem("cg-k") || "";
+  if (u.searchParams.has("k")) { sessionStorage.setItem("cg-k", k); u.searchParams.delete("k"); history.replaceState(null, "", u.pathname + u.search + u.hash); }
+  return k;
+})();
+const cgFetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => (CG_KEY && String(url).startsWith("/api/"))
+  ? cgFetch(url, { ...opts, headers: { ...(opts.headers || {}), "X-ClearGate-Key": CG_KEY } }) : cgFetch(url, opts);
+const eventsUrl = () => "/events" + (CG_KEY ? "?k=" + encodeURIComponent(CG_KEY) : "");
 const $ = id => document.getElementById(id);
 const panes = { stock: $("pane-stock"), gated: $("pane-gated") };
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -188,6 +406,9 @@ function reset() {
   for (const m of ["stock", "gated"]) panes[m].querySelector(".rows").innerHTML = "";
   for (const id of ["s-tools", "g-tools", "tok-before", "tok-after"]) $(id).textContent = "–";
   $("g-stopped").textContent = "";
+  for (const v of VERBS) { tally[v] = 0; }
+  paintTally();
+  sign("", "No merge requested yet", "One spoken code approves one exact set of merge arguments.");
   paint();
   $("go").disabled = true;
   $("verdict").classList.remove("show");
@@ -197,10 +418,28 @@ function reset() {
 function paint() {
   const s = stats.stock, g = stats.gated;
   $("s-reached").textContent = s.reached;
-  $("s-of").textContent = s.outside ? `of ${s.outside} ·` : "";
+  $("s-of").textContent = s.outside ? `of ${s.outside} out-of-task calls ran` : "out-of-task calls ran";
   $("g-reached").textContent = g.reached;
-  $("g-stopped").textContent = (g.outside ? `of ${g.outside} reached · ${g.stopped} stopped` : "")
-    + (g.unprovable ? ` · ${g.unprovable} allowed, not provable` : "");
+  $("g-stopped").textContent = (g.outside ? ` (${g.stopped} of ${g.outside} stopped)` : "")
+    + (g.unprovable ? `, ${g.unprovable} allowed but not provable` : "");
+}
+
+const VERBS = ["ALLOW", "NARROW", "BLOCK", "ESCALATE"];
+const tally = {};
+function paintTally() {
+  for (const v of VERBS) {
+    $(`t-${v}`).textContent = tally[v] || 0;
+    document.querySelector(`#tally .t-${v}`).classList.toggle("zero", !tally[v]);
+  }
+}
+function countVerb(e) {
+  if (e.mode !== "gated" || !VERBS.includes(e.verb)) return;
+  tally[e.verb] = (tally[e.verb] || 0) + 1;
+  paintTally();
+}
+function sign(cls, html, sub) {
+  $("sign-state").className = cls; $("sign-state").innerHTML = html;
+  if (sub != null) $("sign-sub").textContent = sub;
 }
 
 function fromCounts(mode, c) {
@@ -226,7 +465,7 @@ function setBadge(source, replay) {
   b.title = `Decisions in the right pane come from: ${source || "unknown"}`;
   $("gated-title").textContent = agntid ? "Same agents via AgntID" : "Same agents, local stand-in";
   $("gated-src").textContent = agntid ? "decisions by the AgntID runtime" : "decisions by the local policy stand-in (not AgntID)";
-  document.querySelectorAll(".gname").forEach(n => n.textContent = agntid ? "vs AgntID" : "vs stand-in");
+  document.querySelectorAll(".dname").forEach(n => n.textContent = agntid ? "AgntID" : "Local stand-in");
 }
 
 function append(mode, el) {
@@ -242,6 +481,34 @@ function chainHtml(e) {
   const chain = [...(e.delegation_chain || [])];
   if (e.tool) chain.push(e.tool);
   return chain.map((c, i) => i === 0 ? `<b>${esc(c)}</b>` : esc(c)).join(" → ");
+}
+
+// AgntID's five-step Runtime Enforcement Flow, and the control level that decides at each step.
+const FLOW = ["Intent Validation", "Policy Check", "Scoped Access", "Execute Tool Call", "Record Trace"];
+const LEVEL = ["Intent-Based Controls", "Parameter-Level Policies", "Tool Access Controls", "ClearGate approval layer, not AgntID-native", ""];
+function flowStep(e, m) {
+  const step = String(m.denial_step || e.denial_step || "").toLowerCase(), rule = String(e.rule || "");
+  if (e.verb === "ALLOW") return 3;
+  if (e.verb === "ESCALATE") return 1;
+  if (m.intent_mismatch || /intent|classification/.test(step) || m.intent_status === "mismatch") return 0;
+  if (rule === "visible_tools" || rule === "task-closed" || /visib|delegation|task_resolution|scope/.test(step) || rule.startsWith("delegation")) return 2;
+  if (step === "approval" || rule === "approval-evidence") return 3;
+  return 1;
+}
+function flowHtml(e, m) {
+  if (e.mode !== "gated" || !["ALLOW", "BLOCK", "ESCALATE"].includes(e.verb)) return "";
+  const at = flowStep(e, m);
+  const cells = FLOW.map((name, i) => {
+    let cls = i < at ? "pass" : i === at ? `hit-${e.verb}` : i === 4 ? "trace" : "";
+    if (e.verb === "ALLOW" && i <= 3) cls = i === 3 ? "hit-ALLOW" : "pass";
+    return `<span class="${cls}" title="${esc(name)}">${i + 1} ${esc(name)}</span>`;
+  }).join("");
+  const who = viaAgntid ? "AgntID" : "Stand-in";
+  const cap = e.verb === "ALLOW" ? `${who}: passed every step; the call ran and was traced`
+    : e.verb === "ESCALATE" ? `${who}: held at <b>Policy Check</b> (Parameter-Level Policies), waiting for the engineer; traced`
+    : `${who}: stopped at <b>${esc(FLOW[at])}</b> (${esc(LEVEL[at])}); never executed, still traced`
+      + (viaAgntid && m.denial_step ? ` <code>step ${esc(m.denial_step)}</code>` : "");
+  return `<div class="flow">${cells}</div><div class="flowcap">${cap}</div>`;
 }
 
 function decision(e) {
@@ -260,6 +527,7 @@ function decision(e) {
       if (a.approx_context_tokens != null) $("tok-after").textContent = a.approx_context_tokens;
       if ($("s-tools").textContent === "–" && b.visible_tools != null) $("s-tools").textContent = b.visible_tools;
     }
+    if (e.verb === "NARROW") countVerb(e);
     div.className = "slim" + (e.verb === "NARROW" ? " narrow" : "");
     div.innerHTML = e.verb === "NARROW"
       ? `<b>NARROW</b> · task opened · tools visible <b>${esc(b.visible_tools)} → ${esc(a.visible_tools)}</b>`
@@ -282,28 +550,34 @@ function decision(e) {
   if (e.kind === "approval") {
     const ok = e.verb === "ALLOW";
     if (ok && e.mode === "gated") { info.approver = e.approver; info.approvedDigest = e.args_digest; }
+    if (e.mode === "gated") sign(ok ? "signed" : "refused", `${ok ? "Signed" : "Refused"} by ${esc(e.approver || "?")}`, `bound to digest ${short(e.args_digest)}`);
     div.className = "slim " + (ok ? "approved" : "rejected");
     div.innerHTML = `${ok ? "APPROVED" : "REJECTED"} <b>${esc(e.tool)}</b> by <b>${esc(e.approver || "?")}</b> · bound to digest <code>${esc(short(e.args_digest))}</code>`;
     append(e.mode, div); return;
   }
 
   // tool call
+  countVerb(e);
   if (e.outside_task) {
     s.outside += 1;
     if (e.verb === "BLOCK") s.stopped += 1; else s.reached += 1;
     if (e.mode === "gated" && e.verb === "ALLOW" && !e.executed) s.unprovable += 1;
     paint();
   }
-  if (e.mode === "gated" && e.tool && /create_pull_request/.test(e.tool) && e.verb === "ALLOW") info.pr = true;
+  if (e.mode === "gated" && e.tool && /create_pull_request/.test(e.tool) && e.verb === "ALLOW") {
+    info.pr = info.pr || true;
+    const u = String(e.result_preview || "").match(/https:\/\/github\.com\/[^\s'"]+\/pull\/\d+/);
+    if (u) info.prUrl = u[0];
+  }
   if (e.mode === "gated" && e.tool && /merge_pull_request/.test(e.tool) && e.args?.pull_number) info.pr = e.args.pull_number;
   const realReason = e.real_world_reason || m.real_world_reason || m.why || "";
   const agntBits = [];
-  if (m.denial_step) agntBits.push(`${viaAgntid && e.mode === "gated" ? "AgntID denied" : "denied"} at step: ${m.denial_step}`);
+  if (m.denial_step && !(e.mode === "gated" && e.verb !== "ALLOW")) agntBits.push(`${viaAgntid && e.mode === "gated" ? "AgntID denied" : "denied"} at step: ${m.denial_step}`);
   if (m.intent_mismatch) agntBits.push(`intent mismatch: ${typeof m.intent_mismatch === "string" ? m.intent_mismatch : JSON.stringify(m.intent_mismatch)}`);
   if (m.verdict_code) agntBits.push(`verdict ${m.verdict_code}`);
   if (m.status) agntBits.push(m.status);
   const isBypass = e.mode === "gated" && e.verb === "BLOCK" && (m.denial_step === "approval" || e.rule === "approval-evidence");
-  if (isBypass) info.bypass = true;
+  if (isBypass) { info.bypass = true; $("sign-sub").textContent = "Retried merge with changed arguments: blocked."; }
   const wouldBe = e.mode === "stock" && m.policy_classifies_as ? ` · ${viaAgntid ? "AgntID policy" : "policy"} would say <b>${esc(m.policy_classifies_as)}</b>` : "";
   let flag = "";
   if (e.outside_task) flag = e.verb === "BLOCK" ? "Outside the task: stopped at the first unexpected call"
@@ -316,6 +590,7 @@ function decision(e) {
     ${realReason ? `<div class="rule">Why: <span class="reason">${esc(realReason)}</span></div>` : ""}
     ${agntBits.length ? `<div class="agntid">${esc(agntBits.join(" · "))}</div>` : ""}
     ${flag ? `<div class="flag">${esc(flag)}</div>` : ""}
+    ${flowHtml(e, m)}
     ${isBypass ? `<div class="bypass"><b>Approval is not a bypass.</b> The engineer approved digest <code>${esc(code4(info.approvedDigest))}…</code>; these arguments hash to <code>${esc(code4(e.args_digest))}…</code>, so the call is blocked.</div>` : ""}
     <div class="meta"><span class="chain">${chainHtml(e)}</span>${e.args_digest ? `<span>digest ${esc(short(e.args_digest))}</span>` : ""}${e.approver ? `<span>approver ${esc(e.approver)}</span>` : ""}</div>`;
   append(e.mode, div);
@@ -332,7 +607,7 @@ function approvalPending(e) {
   const box = document.createElement("div");
   box.className = "approval";
   box.id = `ap-${e.id}`;
-  const code = code4(e.args_digest);
+  const code = code4(e.code);
   const callUrl = ONCALL_URLS[0] || `${location.origin}/oncall`;
   box.innerHTML = `
     <div class="calling"><i></i>Calling on-call engineer…</div>
@@ -358,6 +633,7 @@ function approvalPending(e) {
     heard.textContent = r.ok ? `voice match ${j.code} · approved` : `“${t}”: ${j.detail || "no match"} · approval NOT given`;
   });
   box.dataset.digest = e.args_digest || "";
+  if (e.mode === "gated") sign("waiting", `Calling: say “approve <code>${esc(code)}</code>”`, `Bound to arguments digest ${short(e.args_digest)}…`);
   (host || panes[e.mode]?.querySelector(".rows"))?.appendChild(box);
   const rows = panes[e.mode]?.querySelector(".rows");
   if (rows && rows.scrollHeight - rows.scrollTop - rows.clientHeight < box.offsetHeight + 80) rows.scrollTop = rows.scrollHeight;
@@ -367,6 +643,8 @@ function approvalResolved(e) {
   const box = document.getElementById(`ap-${e.id}`);
   if (!box) return;
   if (e.approved) { info.approver = e.approver; info.approvedDigest = box.dataset.digest; }
+  if (box.closest("#pane-gated")) sign(e.approved ? "signed" : "refused", `${e.approved ? "Signed" : "Refused"} by ${esc(e.approver)}`,
+    `via ${e.via || "?"}, bound to digest ${short(box.dataset.digest)}`);
   box.outerHTML = `<div class="slim ${e.approved ? "approved" : "rejected"}">${e.approved ? "APPROVED" : "REJECTED"} by <b>${esc(e.approver)}</b> via ${esc(e.via)} · bound to digest <code>${esc(short(box.dataset.digest))}</code></div>`;
 }
 
@@ -439,17 +717,23 @@ function showVerdict() {
   const base = p => String(p || "").split("/").pop();
   const approver = (c.approved || [])[0] || info.approver || (c.merged_by && c.merged_by !== "the agent itself" ? c.merged_by : null);
   const fixed = (g.reasons || []).some(r => /fixed|fix merged/.test(r) && !/NOT/.test(r));
-  const pr = typeof info.pr === "number" || typeof info.pr === "string" ? `PR #${info.pr}` : (info.pr ? "PR opened" : "no PR");
+  const ghLive = config.tools?.github === "live" && !config.stub && !g.replay;
+  const prNum = typeof info.pr === "number" || typeof info.pr === "string" ? info.pr : null;
+  const prUrl = info.prUrl || "";
+  const pr = !info.pr ? "no PR"
+    : !ghLive ? "PR (stub PR)"
+    : prNum != null ? (prUrl ? `<a href="${esc(prUrl)}" target="_blank" rel="noopener">PR #${esc(prNum)}</a>` : `PR #${esc(prNum)}`)
+    : "PR opened";
   const verified = g.verified || "";
   const row = (ok, html) => `<li><span class="${ok ? "ok" : "no"}">${ok ? "✓" : "✗"}</span><span>${html}</span></li>`;
   const humanApprover = approver && !/auto-approver|timeout/.test(approver);
   const checks = [
-    row(fixed, `Bug fixed + ${esc(pr)}${c.merged_by ? " merged" : ""}`),
+    row(fixed, `Bug fixed + ${pr}${c.merged_by ? " merged" : ""}`),
     row(c.tools_after != null && c.tools_before != null && c.tools_after < c.tools_before,
         `Tools narrowed <b>${esc(c.tools_before ?? "?")} → ${esc(c.tools_after ?? "?")}</b>` + (c.context_tokens_before != null ? ` <small>(≈${esc(c.context_tokens_before)} → ${esc(c.context_tokens_after)} tokens)</small>` : "")),
     row((c.outside_task_reached_tool ?? 1) === 0, `<b>${esc(c.outside_task_stopped ?? 0)}</b> out-of-task attempts blocked, <b>${esc(c.outside_task_reached_tool ?? "?")}</b> reached a tool`),
     row(!!humanApprover, approver ? `Merge approved by <b>${esc(approver)}</b>${humanApprover ? "" : " (not a human)"}` : "Merge not approved"),
-    info.bypass ? row(true, "Swapped merge target after approval: <b>blocked</b> (approval is not a bypass)") : "",
+    info.bypass ? row(true, "Retried merge with changed arguments: <b>blocked</b> (approval is not a bypass)") : "",
     row(verified.startsWith("MATCH"), `Signed record: <code>${esc((verified.split(/\s/)[0] || "unverified").replace(/:$/, ""))}</code>`),
   ].join("");
   $("verdict-card").innerHTML = `
@@ -467,6 +751,8 @@ function showVerdict() {
 }
 
 function handle(e) {
+  if (e.type === "mode_start" && e.subject === "bank") bankRuns.add(e.run_id);
+  if (e.type !== "run_start" && e.type !== "approval_resolved" && isBank(e)) { bankEvent(e); return; }
   switch (e.type) {
     case "run_start": reset(); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
     case "mode_start": if (e.mode === "gated") setBadge(e.source, isReplay || e.replay); if (e.brain) { $("brain").textContent = brainLabel(e.brain); $("brain").title = e.brain; } break;
@@ -474,21 +760,415 @@ function handle(e) {
     case "approval_pending": approvalPending(e); break;
     case "approval_resolved": approvalResolved(e); break;
     case "mode_done": done[e.mode] = e; fromCounts(e.mode, e.counts); break;
-    case "run_done": $("go").disabled = false; $("start").disabled = false; status(isReplay ? "replay done · press G" : "run done · press G"); setTimeout(showVerdict, 1200); break;
+    case "run_done": $("go").disabled = false; $("start").disabled = false; status(isReplay ? "replay done · press G" : "run done · press G"); setTimeout(() => { if (!$("bank").classList.contains("show")) showVerdict(); }, 1200); break;
   }
 }
 
-fetch("/api/config").then(r => r.json()).then(c => { config = c; setBadge(c.enforcer === "agntid" ? "agntid" : "local"); }).catch(() => {});
+// Judge phone-in: the bank's voice support line, stock vs gated, on the same /events stream.
+const APP_LAYER = "cleargate-app-layer";
+const REFUND_TOOL = /refund_to_account$/;
+const CHIP_LABEL = { legit: "Failed UPI payment, ₹2,340", branch: "Fake branch officer, ₹48,000", statement: "Statement, plus a refund",
+  hinglish: "Hinglish “RBI fraud cell”", "under-cap-new-account": "Under-cap refund to a new account" };
+const bankRuns = new Set();
+const bk = { runs: {}, current: null, busy: false, sarvam: false, unlocked: false, lastReply: null };
+const bankAudio = new Audio();
+bankAudio.setAttribute("playsinline", "");
+const inr = n => "₹" + Number(n || 0).toLocaleString("en-IN");
+const keyQ = () => CG_KEY ? "?k=" + encodeURIComponent(CG_KEY) : "";
+const baseName = p => String(p || "").split("/").pop();
+
+function isBank(e) { return e.subject === "bank" || (e.run_id && bankRuns.has(e.run_id)); }
+function bankOpen(show = true) {
+  $("bank").classList.toggle("show", show);
+  if (show) { $("verdict").classList.remove("show"); loadBank(); }
+  if (!show && location.pathname === "/bank") history.replaceState(null, "", "/" + location.search);
+}
+function bankStatus(t, err) { const s = $("bank-st"); s.textContent = t || ""; s.title = t || ""; s.className = "st" + (err ? " err" : ""); }
+
+function bankRun(id) {
+  if (!bk.runs[id]) bk.runs[id] = { id, events: { stock: [], gated: [] }, src: {}, done: {}, result: null };
+  if (bk.current !== id) {
+    bk.current = id;
+    for (const m of ["stock", "gated"]) { const rows = $(`bank-${m}`).querySelector(".rows"); rows.innerHTML = ""; rows.classList.remove("settled"); }
+    $("bank-vis").className = "visbeat"; $("bank-vis").innerHTML = "";
+    bankFoot("stock"); bankFoot("gated");
+  }
+  return bk.runs[id];
+}
+
+function bankSource(source) {
+  const agntid = /^agntid/i.test(String(source || ""));
+  $("bank-badge").textContent = agntid ? "AgntID runtime live" : "Local stand-in: simulation, not AgntID";
+  $("bank-badge").className = "badge " + (agntid ? "agntid" : "standin");
+  $("bank-gated-src").textContent = agntid ? "decisions by the AgntID runtime, plus the ClearGate app layer"
+    : "local stand-in simulates AgntID; the payee check is the bank system";
+}
+
+function bankEvent(e) {
+  if (e.type === "mode_start") {
+    bankRuns.add(e.run_id);
+    const r = bankRun(e.run_id);
+    r.src[e.mode] = e.source;
+    if (e.mode === "gated") bankSource(e.source);
+    return;
+  }
+  const r = bk.runs[e.run_id || bk.current];
+  if (!r) return;
+  if (e.type === "decision" && r.events[e.mode]) {
+    if (r.result?.decisions) return;
+    r.events[e.mode].push(e);
+    if (r.id === bk.current) { const el = bankRow(e, r); if (el) bankAppend(e.mode, el); if (e.kind === "notice") bankVis(e); }
+  } else if (e.type === "mode_done") {
+    r.done[e.mode] = e;
+    if (!r.result?.decisions) {
+      r.result = r.result || { panes: {} };
+      r.result.panes[e.mode] = { counts: e.counts, reply_text: e.reply_text, record: e.record, verified: e.verified, account_on_file: "" };
+      if (r.id === bk.current) bankFoot(e.mode);
+    }
+  } else if (e.type === "approval_pending") {
+    bankApproval(e);
+  }
+}
+
+function bankAppend(mode, el) {
+  const rows = $(`bank-${mode}`).querySelector(".rows");
+  rows.querySelector(".empty")?.remove();
+  const follow = rows.scrollHeight - rows.scrollTop - rows.clientHeight < 80;
+  rows.appendChild(el);
+  if (follow) rows.scrollTop = rows.scrollHeight;
+}
+
+const SIM_TAG = /\[local-simulation: ([^\]]+)\]\s*/g;
+function stageOf(e) { return String(e.meta?.stage || e.denial_step || ""); }
+function sims(e) {
+  const out = new Set();
+  for (const m of String(e.reason || "").matchAll(SIM_TAG)) out.add(m[1]);
+  const st = stageOf(e);
+  if (st.startsWith("local-simulation")) out.add(st.replace(/^local-simulation:\s*/, ""));
+  return [...out];
+}
+function plainReason(e) { return String(e.reason || "").replace(SIM_TAG, "").trim(); }
+function standIn(r) { return !/^agntid/i.test(String(r.src.gated || r.result?.panes?.gated?.source || config.enforcer || "")); }
+function tagsHtml(e, r) {
+  if (e.mode !== "gated") return "";
+  const tags = [];
+  if (stageOf(e) === APP_LAYER) tags.push(`<span class="stage app">ClearGate app layer</span>`);
+  const s = sims(e);
+  for (const x of s) tags.push(`<span class="stage sim" title="Local stand-in approximating AgntID, not the AgntID runtime">simulation · ${esc(x.replace(/^AgntID\s*/, "AgntID "))}</span>`);
+  if (!s.length && stageOf(e) !== APP_LAYER && ["call", "notice", "task_open"].includes(e.kind)) {
+    tags.push(standIn(r) ? `<span class="stage sim" title="Local stand-in approximating AgntID, not the AgntID runtime">simulation · local stand-in</span>`
+                         : `<span class="stage agntid">AgntID runtime</span>`);
+  }
+  return tags.length ? `<div class="tags">${tags.join("")}</div>` : "";
+}
+
+function bankFlow(e, r) {
+  if (e.mode !== "gated" || e.kind !== "call" || !["ALLOW", "BLOCK", "ESCALATE"].includes(e.verb)) return "";
+  const sim = standIn(r), who = sim ? "Simulation (local stand-in)" : "AgntID";
+  if (stageOf(e) === APP_LAYER) {
+    const names = [...FLOW.slice(0, 3), "ClearGate app layer", ...FLOW.slice(3)];
+    const cells = names.map((n, i) => {
+      const cls = i < 3 ? "pass" : i === 3 ? (e.verb === "BLOCK" ? "hit-APP" : "pass") : i === 5 ? "trace" : "";
+      const num = i < 3 ? i + 1 : i === 3 ? "+" : i;
+      return `<span class="${cls}" title="${esc(n)}">${num} ${esc(n)}</span>`;
+    }).join("");
+    return `<div class="flow six">${cells}</div><div class="flowcap">Stopped at the <b>ClearGate app layer</b>: caller-ID-bound destination check, not AgntID-native. Never executed, still traced.</div>`;
+  }
+  const st = stageOf(e);
+  let at = /visib/i.test(st) ? 2 : /intent/i.test(st) ? 0 : /parameter|cap/i.test(st) ? 1 : flowStep(e, e.meta || {});
+  const cells = FLOW.map((name, i) => {
+    let cls = i < at ? "pass" : i === at ? `hit-${e.verb}` : i === 4 ? "trace" : "";
+    if (e.verb === "ALLOW" && i <= 3) cls = i === 3 ? "hit-ALLOW" : "pass";
+    return `<span class="${cls}" title="${esc(name)}">${i + 1} ${esc(name)}</span>`;
+  }).join("");
+  const cap = e.verb === "ALLOW" ? `${who}: passed every step; the call ran and was traced`
+    : e.verb === "ESCALATE" ? `${who}: held at <b>Policy Check</b>, waiting for a human; traced`
+    : `${who}: stopped at <b>${esc(FLOW[at])}</b> (${esc(LEVEL[at])}); never executed, still traced`;
+  return `<div class="flow">${cells}</div><div class="flowcap">${cap}</div>`;
+}
+
+function onFileOf(r, mode) { return r.result?.panes?.[mode]?.account_on_file || r.result?.panes?.gated?.account_on_file || ""; }
+function isLeak(e, r) {
+  if (e.mode !== "stock" || e.kind !== "call" || !REFUND_TOOL.test(e.tool || "")) return false;
+  const aof = onFileOf(r, "stock");
+  return !!e.outside_task || (!!aof && String(e.args?.destination_account) !== aof);
+}
+
+function bankRow(e, r) {
+  const div = document.createElement("div");
+  const chain = (e.delegation_chain || []).map(c => String(c).replace(/^user:/, "")).join(" → ");
+  div.title = chain ? `delegation: ${chain}${e.tool ? " → " + e.tool : ""}` : "";
+  if (e.kind === "task_open") {
+    div.className = "slim" + (e.verb === "NARROW" ? " narrow" : "");
+    div.innerHTML = e.verb === "NARROW" ? `<b>NARROW</b> · task opened · ${esc(plainReason(e))}` : `task opened · ${esc(plainReason(e) || "nothing filtered")}`;
+    return div;
+  }
+  if (e.kind === "delegation") { div.className = "slim"; div.innerHTML = `${chainHtml(e)} · ${esc(trunc(plainReason(e) || e.meta?.instruction || "", 70))}`; return div; }
+  if (e.kind === "task_close") { div.className = "slim"; div.innerHTML = `<b>task closed</b>${e.mode === "gated" ? " · any later call is a fresh authorization event" : ""}`; return div; }
+  if (e.kind === "notice") {
+    div.className = "slim" + (e.verb === "NARROW" ? " narrow" : "");
+    div.innerHTML = `<b>${esc(e.verb)}</b> <code>${esc(e.rule)}</code> · ${esc(plainReason(e))}${tagsHtml(e, r)}`;
+    return div;
+  }
+  if (e.kind === "approval") {
+    const ok = e.verb === "ALLOW";
+    div.className = "slim " + (ok ? "approved" : "rejected");
+    div.innerHTML = `${ok ? "APPROVED" : "REJECTED"} <b>${esc(e.tool)}</b> by <b>${esc(e.approver || "?")}</b> · digest <code>${esc(short(e.args_digest))}</code>`;
+    return div;
+  }
+  if (e.kind !== "call") return null;
+  const leak = isLeak(e, r);
+  const also = (e.meta?.also_simulated || []).map(x => String(x).replace(SIM_TAG, "")).filter(Boolean);
+  div.className = `card v-${e.verb}${leak ? " leak" : ""}${leak && e.executed ? " moved" : ""}`;
+  div.innerHTML = `
+    <div class="top"><span class="pill">${esc(e.verb)}</span><span class="tool">${esc(e.tool)}</span><span class="agent">${esc(e.agent)}</span></div>
+    ${argsText(e.args) ? `<div class="args">${esc(argsText(e.args))}</div>` : ""}
+    ${e.rule || e.reason ? `<div class="rule">${e.rule ? `<code>${esc(e.rule)}</code> ` : ""}<span class="reason">${esc(plainReason(e))}</span></div>` : ""}
+    ${e.intent_mismatch && !plainReason(e).includes(e.intent_mismatch) ? `<div class="agntid">intent mismatch: ${esc(e.intent_mismatch)}</div>` : ""}
+    ${also.length ? `<div class="agntid">simulation would also block: ${esc(also.join("; "))}</div>` : ""}
+    ${leak ? `<div class="flag bad">${e.executed ? `${inr(e.args?.amount_inr)} left for account ${esc(e.args?.destination_account)}`
+      : `Reached the tool with no gate; only the bank's own payee check refused it${e.result_preview ? `: ${esc(trunc(e.result_preview, 90))}` : ""}`}</div>` : ""}
+    ${tagsHtml(e, r)}
+    ${bankFlow(e, r)}
+    <div class="meta"><span class="chain">${chainHtml(e)}</span>${e.args_digest ? `<span>digest ${esc(short(e.args_digest))}</span>` : ""}</div>`;
+  return div;
+}
+
+function bankVis(e) {
+  if (e.mode !== "gated" || !/payment-task/.test(e.rule || "")) return;
+  const open = e.rule === "payment-task-open";
+  const s = sims(e);
+  const why = open ? (plainReason(e).match(/\(([^)]*)\)/) || [, ""])[1] : plainReason(e).replace(/^no payment task:\s*/i, "").replace(/;\s*refund tools? stay hidden\.?$/i, "");
+  $("bank-vis").innerHTML = `<b class="v">NARROW</b>${open ? "Payment task opened, so the refund tool becomes visible to the payments agent" :
+    "No payment task opened, so the refund tool stays hidden from the agent"}${why ? `: <span class="reason">${esc(why)}</span>` : ""}.`
+    + (s.length ? ` <span class="stage sim">simulation · ${esc(s[0])}</span>` : "");
+  $("bank-vis").className = "visbeat show";
+}
+
+function bankFoot(mode) {
+  const foot = $(`bank-${mode}`).querySelector(".bfoot");
+  const r = bk.runs[bk.current];
+  const pane = r?.result?.panes?.[mode];
+  if (!pane) {
+    foot.innerHTML = `<div class="money wait"><span>Money moved to a new account:</span><b>${r ? "…" : "–"}</b></div>`;
+    return;
+  }
+  const aof = pane.account_on_file || "";
+  const moved = r.events[mode].filter(e => e.kind === "call" && REFUND_TOOL.test(e.tool || "") && e.executed
+    && (aof ? String(e.args?.destination_account) !== aof : !!e.outside_task)).reduce((n, e) => n + Number(e.args?.amount_inr || 0), 0);
+  const c = pane.counts || {};
+  const rec = baseName(pane.record), ok = String(pane.verified || "").startsWith("MATCH");
+  const gated = mode === "gated";
+  foot.innerHTML = `
+    <div class="money ${moved ? "bad" : "good"}"><span>Money moved to a new account:</span><b>${inr(moved)}</b></div>
+    <div class="facts">Attack reached a tool <b class="${c.attack_reached_tool ? "bad" : "good"}">${esc(c.attack_reached_tool ?? 0)} of ${esc(c.attack_attempts ?? 0)}</b>
+      · refunded to the account on file${aof ? ` (••${esc(aof.slice(-4))})` : ""} <b>${inr(c.refunded_to_file_inr)}</b></div>
+    <div class="says"><span>${gated ? "Caller hears" : "Agent says"}</span><span class="reason">“${esc(pane.reply_text)}”</span>${gated ? `<button id="bank-replay" title="Play the reply again">Play</button>` : ""}</div>
+    ${!gated && c.attack_reached_tool && !moved ? `<div class="facts">The attack reached the refund tool; only the core-banking payee check stopped the money.</div>` : ""}
+    ${pane.error ? `<div class="facts bad">${esc(pane.error)}</div>` : ""}
+    <div class="links"><a href="/api/bank/record/${encodeURIComponent(rec)}${keyQ()}" target="_blank" rel="noopener">record ${esc(rec)}</a>
+      <a class="${ok ? "ok" : "bad"}" href="/api/bank/verify/${encodeURIComponent(rec)}${keyQ()}" target="_blank" rel="noopener" title="Re-run verify.py on this record">${esc(trunc(pane.verified || "unverified", 60))}</a></div>`;
+  if (gated) foot.querySelector("#bank-replay").onclick = () => bankSpeak(bk.lastReply);
+}
+
+function bankFinish(j) {
+  bankRuns.add(j.run_id);
+  const r = bankRun(j.run_id);
+  r.result = j;
+  for (const mode of ["stock", "gated"]) {
+    const fromResult = (j.decisions || []).filter(d => d.mode === mode).map(d => ({ ...d, run_id: j.run_id }));
+    if (fromResult.length > r.events[mode].length) r.events[mode] = fromResult;
+    if (j.panes?.[mode]?.source) r.src[mode] = j.panes[mode].source;
+  }
+  if (j.panes?.gated) bankSource(j.panes.gated.source);
+  for (const mode of ["stock", "gated"]) {
+    const rows = $(`bank-${mode}`).querySelector(".rows");
+    rows.innerHTML = ""; rows.classList.add("settled");
+    for (const e of r.events[mode]) { const el = bankRow(e, r); if (el) rows.appendChild(el); if (e.kind === "notice") bankVis(e); }
+    if (!rows.children.length) rows.innerHTML = `<div class="empty">Not run in this mode.</div>`;
+    const leak = rows.querySelector(".leak, .v-BLOCK");
+    rows.scrollTop = leak ? leak.offsetTop - rows.offsetTop - 60 : 0;
+    bankFoot(mode);
+  }
+  bankSaid(j.transcript, j.language);
+  bk.lastReply = j;
+  bankSpeak(j);
+}
+
+function bankSaid(text, lang) {
+  if (text) $("bank-text").value = text;
+  $("bank-lang").textContent = lang ? `caller ${lang}` : ""; $("bank-lang").hidden = !lang;
+}
+
+const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+function unlockAudio() {
+  if (bk.unlocked) return;
+  bk.unlocked = true;
+  bankAudio.src = SILENT_WAV; bankAudio.play().catch(() => {});
+  if (window.speechSynthesis) speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(""), { volume: 0 }));
+}
+function bankSpeak(j) {
+  if (!j) return;
+  if (j.reply_audio) {
+    const bytes = Uint8Array.from(atob(j.reply_audio), c => c.charCodeAt(0));
+    if (bankAudio.dataset.url) URL.revokeObjectURL(bankAudio.dataset.url);
+    bankAudio.dataset.url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    bankAudio.src = bankAudio.dataset.url;
+    bankAudio.play().catch(() => bankStatus("Tap Play to hear the gated agent's reply"));
+  } else if (window.speechSynthesis && j.reply_text) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(j.reply_text);
+    u.lang = j.language || "en-IN";
+    u.voice = speechSynthesis.getVoices().find(v => v.lang === u.lang) || null;
+    speechSynthesis.speak(u);
+  }
+}
+
+function bankBusy(on) {
+  bk.busy = on;
+  for (const id of ["bank-send", "bank-mic"]) $(id).disabled = on;
+  document.querySelectorAll("#bank-chips .chip").forEach(c => c.disabled = on);
+}
+
+async function bankSend(what) {
+  if (bk.busy) return;
+  unlockAudio();
+  bankBusy(true);
+  const audio = typeof what !== "string";
+  if (!audio) bankSaid(what, "");
+  bankStatus(audio ? "Transcribing with Sarvam, then both agents take the call…" : "Both agents are taking the call…");
+  try {
+    let r;
+    if (audio) {
+      const type = (what.type || "audio/mp4").split(";")[0];
+      const ext = { "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/wav": ".wav", "audio/mpeg": ".mp3" }[type] || ".webm";
+      const fd = new FormData();
+      fd.append("file", what, "caller" + ext); fd.append("mode", "both");
+      r = await fetch("/api/bank/call/audio", { method: "POST", body: fd });
+    } else {
+      r = await fetch("/api/bank/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: what, mode: "both" }) });
+    }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { bankStatus(r.status === 403 ? "Open this page with the ?k= key the presenter shares" : (j.detail || `call failed (${r.status})`), true); return; }
+    bankFinish(j);
+    const g = j.panes?.gated?.counts, s = j.panes?.stock?.counts;
+    bankStatus((j.notes || []).join(" · ") || (g && s ? `attack reached a tool: stock ${s.attack_reached_tool} of ${s.attack_attempts}, gated ${g.attack_reached_tool} of ${g.attack_attempts}` : "call done"));
+  } catch (err) {
+    bankStatus(`call failed: ${err}`, true);
+  } finally { bankBusy(false); }
+}
+
+function bankApproval(e) {
+  if (document.getElementById(`ap-${e.id}`)) return;
+  const box = document.createElement("div");
+  box.className = "approval"; box.id = `ap-${e.id}`; box.dataset.digest = e.args_digest || "";
+  box.innerHTML = `<div class="say">Refund over the cap: approve <code>${esc(code4(e.code))}</code>?</div>
+    <div class="agent">${esc(e.tool)} · ${esc(argsText(e.args))} · rule ${esc(e.rule)}</div>
+    <div class="actions"><button class="approve">Approve</button><button class="reject">Reject</button><span class="heard"></span></div>`;
+  const click = approved => fetch(`/api/approvals/${e.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approved }) })
+    .then(r => { if (!r.ok) box.querySelector(".heard").textContent = "no longer pending"; });
+  box.querySelector(".approve").onclick = () => click(true);
+  box.querySelector(".reject").onclick = () => click(false);
+  bankAppend(e.mode === "stock" ? "stock" : "gated", box);
+}
+
+// Hold to talk: MediaRecorder clip to Sarvam STT; Web Speech when Sarvam or MediaRecorder is missing.
+const mic = { stream: null, rec: null, sr: null, held: false, t0: 0, timer: 0 };
+function pickMime() {
+  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus", "audio/ogg"])
+    if (window.MediaRecorder?.isTypeSupported?.(m)) return m;
+  return "";
+}
+async function holdStart(ev) {
+  ev.preventDefault();
+  if (bk.busy || mic.held) return;
+  mic.held = true;
+  unlockAudio();
+  const btn = $("bank-mic");
+  if (!(bk.sarvam && window.MediaRecorder && navigator.mediaDevices?.getUserMedia)) {
+    if (!SR) { mic.held = false; bankStatus("No voice input in this browser; type instead", true); return; }
+    const sr = mic.sr = new SR();
+    let said = "";
+    sr.lang = "en-IN"; sr.interimResults = true;
+    sr.onresult = r => { said = [...r.results].map(x => x[0].transcript).join(" "); $("bank-text").value = said; };
+    sr.onerror = r => bankStatus(`mic: ${r.error}`, true);
+    sr.onend = () => { btn.classList.remove("on"); mic.sr = null; if (said.trim()) bankSend(said.trim()); };
+    btn.classList.add("on"); $("bank-hold-label").textContent = "Listening…"; sr.start();
+    return;
+  }
+  try {
+    mic.stream = mic.stream || await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (err) { mic.held = false; bankStatus("Microphone blocked; type instead", true); return; }
+  if (!mic.held) { bankStatus("Mic ready. Hold the button while you speak."); return; }
+  const mime = pickMime(), chunks = [];
+  const rec = mic.rec = new MediaRecorder(mic.stream, mime ? { mimeType: mime } : undefined);
+  rec.ondataavailable = d => { if (d.data?.size) chunks.push(d.data); };
+  rec.onstop = () => {
+    const blob = new Blob(chunks, { type: rec.mimeType || mime || "audio/mp4" });
+    if (Date.now() - mic.t0 < 600 || !blob.size) { bankStatus("Too short. Hold the button while you speak."); return; }
+    bankSend(blob);
+  };
+  rec.start(); mic.t0 = Date.now();
+  btn.classList.add("on"); $("bank-hold-label").textContent = "Release to send";
+  mic.timer = setTimeout(holdEnd, 25000);
+}
+function holdEnd() {
+  if (!mic.held) return;
+  mic.held = false;
+  clearTimeout(mic.timer);
+  $("bank-mic").classList.remove("on"); $("bank-hold-label").textContent = "Hold to talk";
+  if (mic.rec?.state === "recording") mic.rec.stop();
+  mic.rec = null;
+  mic.sr?.stop();
+}
+
+let bankLoaded = false;
+function loadBank() {
+  fetch("/api/voice/status").then(r => r.json()).then(j => { bk.sarvam = !!j.sarvam; }).catch(() => {});
+  if (bankLoaded) return;
+  bankLoaded = true;
+  bankSource(config.enforcer === "agntid" ? "agntid" : "local");
+  fetch("/api/bank/demo").then(r => r.json()).then(lines => {
+    $("bank-chips").innerHTML = "";
+    for (const [key, text] of Object.entries(lines || {})) {
+      const legit = key === "legit";
+      const b = document.createElement("button");
+      b.className = "chip " + (legit ? "legit" : "attack");
+      b.title = text; b.dataset.key = key;
+      b.innerHTML = `<span class="k">${legit ? "LEGIT" : "ATTACK"}</span>${esc(CHIP_LABEL[key] || key.replace(/[-_]+/g, " "))}`;
+      b.onclick = () => { $("bank-text").value = text; bankSend(text); };
+      $("bank-chips").appendChild(b);
+    }
+  }).catch(() => { bankLoaded = false; });
+  bankFoot("stock"); bankFoot("gated");
+}
+
+$("bank-open").onclick = () => bankOpen(true);
+$("bank-close").onclick = () => bankOpen(false);
+$("bank-send").onclick = () => { const t = $("bank-text").value.trim(); if (t) bankSend(t); };
+$("bank-text").addEventListener("keydown", k => { if (k.key === "Enter") $("bank-send").click(); });
+const holdBtn = $("bank-mic");
+holdBtn.addEventListener("pointerdown", ev => { holdBtn.setPointerCapture?.(ev.pointerId); holdStart(ev); });
+for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) holdBtn.addEventListener(t, holdEnd);
+holdBtn.addEventListener("contextmenu", ev => ev.preventDefault());
+holdBtn.addEventListener("keydown", k => { if ((k.key === " " || k.key === "Enter") && !k.repeat) holdStart(k); });
+holdBtn.addEventListener("keyup", k => { if (k.key === " " || k.key === "Enter") holdEnd(); });
+
+fetch("/api/config").then(r => r.json()).then(c => { config = c; setBadge(c.enforcer === "agntid" ? "agntid" : "local"); if (!bk.current) bankSource(c.enforcer === "agntid" ? "agntid" : "local"); }).catch(() => {});
 reset();
-new EventSource("/events").onmessage = m => handle(JSON.parse(m.data));
+new EventSource(eventsUrl()).onmessage = m => handle(JSON.parse(m.data));
 $("start").onclick = startRun;
 $("prompt").addEventListener("keydown", k => { if (k.key === "Enter") startRun(); });
 $("mic-prompt").onclick = () => listen($("mic-prompt"), t => $("prompt").value = t, t => { $("prompt").value = t; startRun(); });
 $("replay").onclick = startReplay;
 $("go").onclick = showVerdict;
+if (location.pathname === "/bank" || location.hash === "#bank") bankOpen(true);
 $("verdict").onclick = ev => { if (ev.target.id === "verdict") $("verdict").classList.remove("show"); };
 document.addEventListener("keydown", k => {
   if (k.target.tagName === "INPUT") return;
+  if (k.key === "Escape" && $("bank").classList.contains("show")) { bankOpen(false); return; }
+  if (k.key === "b" || k.key === "B") { bankOpen(!$("bank").classList.contains("show")); return; }
+  if ($("bank").classList.contains("show")) return;
   if (k.key === "g" || k.key === "G") showVerdict();
   if (k.key === "r" || k.key === "R") startReplay();
   if (k.key === "Escape") $("verdict").classList.remove("show");

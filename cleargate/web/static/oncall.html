@@ -3,17 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0a0d12">
+<meta name="theme-color" content="#0f1522">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <title>ClearGate On-call</title>
 <style>
   :root {
-    --bg: #0a0d12; --panel: #121821; --panel2: #18202b; --line: #263040; --text: #f1f4f8; --muted: #9aa6b6;
-    --allow: #34d17b; --block: #ff5a5a; --escalate: #ffb020; --narrow: #4f9dff;
-    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --bg: #0f1522; --panel: #172030; --panel2: #1e2a3d; --line: #2a3750; --text: #eef1f6; --muted: #a3afc2;
+    --allow: #3ddc97; --block: #ff5d5d; --escalate: #ffb547; --narrow: #5aa9ff;
+    --sans: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
-    font: 17px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    font: 17px/1.4 var(--sans); }
+  button, input { font-family: var(--sans); }
   main { max-width: 480px; margin: 0 auto; min-height: 100vh; min-height: 100dvh; padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
     display: flex; flex-direction: column; gap: 18px; }
   .top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 14px; }
@@ -24,16 +28,16 @@
   .screen.show { display: flex; }
   .center { text-align: center; }
   .avatar { width: 128px; height: 128px; margin: 18px auto 6px; border-radius: 50%; display: grid; place-items: center;
-    background: var(--panel2); border: 2px solid var(--line); font: 800 40px/1 inherit; letter-spacing: -.02em; }
+    background: var(--panel2); border: 3px solid var(--line); font: 900 44px/1 var(--sans); font-stretch: 115%; letter-spacing: -.02em; }
   .ringing .avatar { border-color: var(--escalate); animation: pulse 1.1s ease-out infinite; }
   @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.55); } 100% { box-shadow: 0 0 0 34px rgba(255,176,32,0); } }
-  h1 { margin: 0; font-size: 26px; line-height: 1.2; }
+  h1 { margin: 0; font: 800 28px/1.15 var(--sans); font-stretch: 110%; }
   h2 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 500; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
   .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 15px; }
   .card dt { color: var(--muted); }
   .card dd { margin: 0; overflow-wrap: anywhere; }
-  .code { font-family: var(--mono); font-size: 40px; font-weight: 700; color: var(--escalate); letter-spacing: .12em; text-align: center; }
+  .code { font-family: var(--mono); font-size: 44px; font-weight: 600; color: var(--escalate); letter-spacing: .12em; text-align: center; }
   .nato { text-align: center; color: var(--muted); font-size: 15px; }
   .buttons { display: flex; justify-content: space-around; gap: 16px; margin-top: auto; padding-top: 8px; }
   .round { width: 76px; height: 76px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; color: #fff; }
@@ -117,6 +121,16 @@
 </main>
 
 <script>
+// Approver key: from ?k= once, then kept for this tab and removed from the address bar (never shown on the projector).
+const CG_KEY = (() => {
+  const u = new URL(location.href), k = u.searchParams.get("k") || sessionStorage.getItem("cg-k") || "";
+  if (u.searchParams.has("k")) { sessionStorage.setItem("cg-k", k); u.searchParams.delete("k"); history.replaceState(null, "", u.pathname + u.search + u.hash); }
+  return k;
+})();
+const cgFetch = window.fetch.bind(window);
+window.fetch = (url, opts = {}) => (CG_KEY && String(url).startsWith("/api/"))
+  ? cgFetch(url, { ...opts, headers: { ...(opts.headers || {}), "X-ClearGate-Key": CG_KEY } }) : cgFetch(url, opts);
+const eventsUrl = () => "/events" + (CG_KEY ? "?k=" + encodeURIComponent(CG_KEY) : "");
 const $ = id => document.getElementById(id);
 const NATO = { a: "alpha", b: "bravo", c: "charlie", d: "delta", e: "echo", f: "foxtrot",
   0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine" };
@@ -295,7 +309,7 @@ async function hear() {
 
 async function decide(transcript) {
   const e = current; if (!e) return;
-  const code = String(e.code || e.args_digest || "").slice(0, 4).toLowerCase();
+  const code = String(e.code || "").slice(0, 4).toLowerCase();
   e._mine = true;
   if (isReject(transcript) && !/approv/i.test(transcript)) {
     await fetch(`/api/approvals/${e.id}`, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -335,12 +349,12 @@ async function answer() {
   if (!current) return;
   if (!armed) await arm();
   ringtone(false);
-  const e = current, d = describe(e), code = String(e.code || e.args_digest || "").slice(0, 4).toLowerCase();
+  const e = current, d = describe(e), code = String(e.code || "").slice(0, 4).toLowerCase();
   $("log").innerHTML = ""; $("typed").hidden = true;
   $("facts").innerHTML = `<dt>Who</dt><dd>${esc(d.agent)} sub-agent, delegated by ${esc(d.by)} for INC-4471</dd>
     <dt>What</dt><dd>${esc(d.what)}</dd><dt>Why</dt><dd>${esc(d.why)}</dd>
     <dt>Digest</dt><dd><code>${esc(String(e.args_digest || "").slice(0, 16))}…</code></dd>`;
-  $("code").textContent = code; $("nato").textContent = spell(code);
+  $("code").textContent = code || "key?"; $("nato").textContent = code ? spell(code) : "Open this page with the approver key to hear the code.";
   show("s-call");
   callStart = Date.now(); clearInterval(clockTimer);
   clockTimer = setInterval(() => { const s = Math.floor((Date.now() - callStart) / 1000); $("call-timer").textContent = `${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }, 500);
@@ -396,7 +410,7 @@ function ingest(e) {
 }
 
 function connect() {
-  const es = new EventSource("/events");
+  const es = new EventSource(eventsUrl());
   es.onopen = () => { $("dot").classList.add("on"); $("conn").textContent = "live"; };
   es.onerror = () => { $("conn").textContent = "polling"; };
   es.onmessage = m => { lastSse = Date.now(); ingest(JSON.parse(m.data)); };
@@ -411,6 +425,8 @@ async function poll() {
       $("dot").classList.add("on");
       if (Date.now() - lastSse > 5000) $("conn").textContent = "live (polling)";
       if (j.run_id) newRun(j.run_id);
+      if (j.authorized === false && !$("nokey")) $("idle-note").insertAdjacentHTML("beforebegin",
+        `<div class="card note" id="nokey" style="border-color: var(--block)"><b>No approver key.</b> This phone can ring but cannot approve. Open the <code>/oncall?k=…</code> link printed in the server terminal.</div>`);
       j.resolved.forEach(e => ingest({ ...e, type: "approval_resolved" }));
       j.pending.forEach(e => ingest({ ...e, type: "approval_pending" }));
     }

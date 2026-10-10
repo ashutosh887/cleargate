@@ -3,7 +3,7 @@
     python scripts/capture.py [--port 8790] [--out docs/screenshots] [--headed]
 
 Starts `cleargate serve --stub --approve web`, drives one run in a 1600x900 dark browser,
-approves the escalation by its 4-char code, and writes 01..09 PNGs. A shot that cannot be
+approves the escalation by its 4-char code, writes 01..09 PNGs, then places one bank call (10). A shot that cannot be
 taken is skipped with a warning; the server is always shut down at the end.
 """
 from __future__ import annotations
@@ -347,6 +347,28 @@ def main() -> int:
                 gctx.close()
             else:
                 warn(f"gate summary empty (rc={r.returncode}): {(r.stderr or r.stdout).strip()[-300:]}")
+
+            # 10: judge phone-in, the Hinglish "RBI fraud cell" call (one Sarvam TTS if configured)
+            try:
+                bctx = browser.new_context(viewport={"width": 1600, "height": 900}, color_scheme="dark",
+                                           device_scale_factor=2)
+                bp = bctx.new_page()
+                bp.goto(base + "/bank", wait_until="domcontentloaded")
+                bp.wait_for_timeout(2000)  # /events replays the incident run; let its run_done (and any GO modal) land
+                bp.evaluate("document.getElementById('verdict')?.classList.remove('show')")
+                bp.click('#bank-chips .chip[data-key="hinglish"]', timeout=10000)
+                bp.wait_for_function("typeof bk !== 'undefined' && bk.lastReply && !bk.busy", timeout=args.run_timeout * 1000)
+                bp.wait_for_function("""['stock', 'gated'].every(m => { const p = document.getElementById('bank-' + m);
+                    return p && p.querySelector('.rows').children.length && p.querySelector('.bfoot .money:not(.wait)'); })""",
+                                     timeout=60000)
+                bp.wait_for_timeout(800)
+                bp.evaluate("document.getElementById('verdict')?.classList.remove('show')")
+                if bp.is_visible("#verdict.show"):
+                    warn("10: GO modal still visible over the bank panel")
+                shot(bp, out, "10-bank-call.png")
+                bctx.close()
+            except Exception as exc:
+                warn(f"10 skipped: {str(exc).splitlines()[0]}")
             browser.close()
     finally:
         stop_server(proc)

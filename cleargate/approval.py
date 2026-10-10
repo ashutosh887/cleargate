@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
+import secrets
 import threading
 import time
 import uuid
@@ -50,9 +52,18 @@ def approval_blocks(req: ApprovalRequest) -> list[dict[str, Any]]:
     ]
 
 
+_APPROVAL_SECRET = (os.environ.get("CLEARGATE_APPROVAL_SECRET") or secrets.token_hex(32)).encode()
+
+
 def short_code(args_digest: str) -> str:
-    """The 4-hex-char code a human reads out to approve (first 4 chars of the args digest)."""
+    """First 4 hex chars of the args digest, for display only. Not an approval code."""
     return args_digest[:4].lower()
+
+
+def approval_code(args_digest: str) -> str:
+    """The 4-hex-char code a human reads out to approve: HMAC-SHA256 of the args digest under a
+    server-held secret, so knowing the arguments is not enough to derive it."""
+    return hmac.new(_APPROVAL_SECRET, args_digest.lower().encode(), hashlib.sha256).hexdigest()[:4]
 
 
 def verify_slack_signature(secret: str, timestamp: str, body: bytes, signature: str) -> bool:
@@ -90,7 +101,7 @@ class ApprovalBroker:
         posted = self._post_to_slack(req)
         self.bus.publish({"type": "approval_pending", "mode": req.mode, "run_id": req.run_id, "id": req.id,
                           "agent": req.agent, "tool": req.tool, "args": req.args, "args_digest": req.args_digest,
-                          "code": short_code(req.args_digest), "rule": req.rule, "delegation_chain": req.delegation_chain, "slack": posted})
+                          "code": approval_code(req.args_digest), "rule": req.rule, "delegation_chain": req.delegation_chain, "slack": posted})
         if not done.wait(self.timeout):
             self.resolve(req.id, False, "timeout", "timeout")
         with self._lock:
@@ -110,15 +121,15 @@ class ApprovalBroker:
         return True
 
     def resolve_by_code(self, code: str, approver_id: str, via: str = "voice", approved: bool = True) -> bool:
-        """Resolve the one pending approval whose arguments digest starts with `code` (spoken
-        or typed; at least 4 hex chars). Refuses when no request, or more than one, matches,
-        so a short code can never approve a different set of arguments."""
+        """Resolve the one pending approval whose approval code equals `code` (spoken or typed).
+        Refuses when no request, or more than one, matches, so a short code can never approve
+        a different set of arguments."""
         code = (code or "").strip().lower()
-        if len(code) < 4 or any(c not in "0123456789abcdef" for c in code):
+        if len(code) != 4 or any(c not in "0123456789abcdef" for c in code):
             return False
         with self._lock:
             matches = [rid for rid, req in self._requests.items()
-                       if req.args_digest.lower().startswith(code) and not self._pending[rid][0].is_set()]
+                       if hmac.compare_digest(approval_code(req.args_digest), code) and not self._pending[rid][0].is_set()]
         if len(matches) != 1:
             return False
         return self.resolve(matches[0], approved, approver_id, via)

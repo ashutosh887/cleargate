@@ -7,7 +7,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
-from cleargate.approval import ApprovalBroker, ApprovalRequest, short_code
+from cleargate.approval import ApprovalBroker, ApprovalRequest, approval_code, short_code
 from cleargate.bus import EventBus
 from cleargate.canonical import arguments_digest
 from cleargate.events import Decision, Kind, Verb
@@ -309,6 +309,7 @@ class EnforcementClient(BaseGate):
         self.enforcer = enforcer
         self.broker = broker
         self.approval_ttl = approval_ttl
+        self.durable: Any = None
         self._evidence: dict[tuple[str, str, str], tuple[ApprovalEvidence, dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
@@ -407,20 +408,25 @@ class EnforcementClient(BaseGate):
                   why: tuple[str, str]) -> tuple[Outcome, ApprovalEvidence] | None:
         digest = arguments_digest(args)
         details = first.details or {}
-        self.recorder.emit(ctx, Kind.CALL, Verb.ESCALATE, tool=tool, args=args, rule=first.rule, reason=first.reason,
-                           policy_name=str(details.get("policy_name") or first.rule),
-                           denial_step=str(details.get("denial_step") or ""), real_world_reason=why[1],
-                           meta=details | {"operation_id": first.operation_id, "code": short_code(digest),
-                                           "mirror_rule": why[0]})
-        answer = self.broker.request(ApprovalRequest(self.recorder.run_id, self.mode, ctx.agent, tool, args, digest,
-                                                     first.rule, first.reason, list(ctx.chain)))
+        answer = self.durable.answer(ctx.agent, tool, digest) if self.durable is not None else None
+        if answer is None:
+            self.recorder.emit(ctx, Kind.CALL, Verb.ESCALATE, tool=tool, args=args, rule=first.rule,
+                               reason=first.reason, policy_name=str(details.get("policy_name") or first.rule),
+                               denial_step=str(details.get("denial_step") or ""), real_world_reason=why[1],
+                               meta=details | {"operation_id": first.operation_id, "code": approval_code(digest),
+                                               "mirror_rule": why[0]})
+        if answer is None and self.durable is not None:
+            self.durable.hibernate(self, ctx, tool, args, digest, first)
+        if answer is None:
+            answer = self.broker.request(ApprovalRequest(self.recorder.run_id, self.mode, ctx.agent, tool, args,
+                                                         digest, first.rule, first.reason, list(ctx.chain)))
         human = answer.via not in ("auto", "timeout")
         self.recorder.emit(ctx, Kind.APPROVAL, Verb.ALLOW if answer.approved else Verb.BLOCK, tool=tool, args=args,
                            rule=first.rule, approver=answer.approver_id, outside_task=not answer.approved,
                            real_world_reason=why[1],
                            reason=(f"{'approved' if answer.approved else 'rejected'} via {answer.via}"
                                    f"{'' if human else ' (not a human)'}; bound to digest {short_code(digest)}…"),
-                           meta={"via": answer.via, "human": human, "code": short_code(digest)})
+                           meta={"via": answer.via, "human": human, "code": approval_code(digest)})
         if not answer.approved:
             return None
         now = time.time()

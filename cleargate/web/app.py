@@ -4,10 +4,13 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import socket
 import threading
 import time
+from collections import deque
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs
 
@@ -25,6 +28,14 @@ STATIC = Path(__file__).parent / "static"
 # Set server-side: the browser never names who approved.
 VOICE_APPROVER = "on-call engineer (voice)"
 WEB_APPROVER = "on-call engineer (web)"
+_LOOPBACK = ("127.0.0.1", "::1", "localhost")
+_FORWARD_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-real-ip", "cf-connecting-ip", "forwarded")
+_AUDIO_EXT = {"audio/wav": ".wav", "audio/x-wav": ".wav", "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".aac",
+              "audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/webm": ".webm"}
+# Each bank turn spends Sarvam credits (one TTS, plus one STT for audio): per client and overall.
+BANK_PER_CLIENT = (6, 60.0)
+BANK_OVERALL = (40, 600.0)
+_PHONE = re.compile(r"^\+?[0-9][0-9 -]{5,19}$")
 
 _SPOKEN = {
     "zero": "0", "oh": "0", "one": "1", "won": "1", "two": "2", "to": "2", "too": "2", "three": "3", "four": "4",
@@ -67,6 +78,37 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
     bus = EventBus()
     app = FastAPI(title="ClearGate")
     state: dict[str, Any] = {"run": None, "thread": None, "pending": {}}
+    # Approver secret. Anyone with the tunnel URL can reach this server, so approving, reading the
+    # approval code, starting a run and the voice endpoints need ?k=<key> or the X-ClearGate-Key header.
+    # The presenter's own browser on localhost, with no proxy headers, is trusted without it.
+    approver_key = os.environ.get("CLEARGATE_APPROVER_KEY") or secrets.token_urlsafe(12)
+    app.state.approver_key = approver_key
+    print(f"[cleargate] approver key set. On the phone open /oncall?k={approver_key} "
+          f"(via the tunnel or LAN URL); approvals without the key get 403.", flush=True)
+
+    def is_local(request: Request) -> bool:
+        host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
+        client = request.client.host if request.client else ""
+        return (client in _LOOPBACK and host in _LOOPBACK
+                and not any(h in request.headers for h in _FORWARD_HEADERS))
+
+    def authorized(request: Request) -> bool:
+        given = request.headers.get("x-cleargate-key") or request.query_params.get("k") or ""
+        return is_local(request) or (bool(given) and secrets.compare_digest(given, approver_key))
+
+    def require_approver(request: Request) -> None:
+        if not authorized(request):
+            raise HTTPException(403, "approver key required: open the page with ?k=<key> printed at server start")
+
+    def redact(event: dict[str, Any]) -> dict[str, Any]:
+        """Unauthenticated clients get no approval code and no args digest on any event."""
+        meta = event.get("meta")
+        if "args_digest" not in event and "code" not in event and not (isinstance(meta, dict) and "code" in meta):
+            return event
+        out = {**event, "args_digest": None, "code": None, "redacted": True}
+        if isinstance(meta, dict) and "code" in meta:
+            out["meta"] = {k: v for k, v in meta.items() if k != "code"}
+        return out
 
     def track(event: dict[str, Any]) -> None:
         if event.get("type") == "approval_pending":
@@ -76,9 +118,14 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     bus.listen(track)
 
+    bank: dict[str, Any] = {"call": None, "lock": threading.Lock(), "hits": {}, "all": deque()}
+
     def busy() -> bool:
         thread = state["thread"]
         return thread is not None and thread.is_alive()
+
+    def bank_busy() -> bool:
+        return bank["lock"].locked()
 
     def make_run(prompt: str | None) -> Run:
         return Run(settings, bus, approvals=approvals, force_stub=force_stub, prompt=prompt or None)
@@ -95,7 +142,8 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     @app.post("/api/run")
     async def start_run(request: Request) -> dict[str, Any]:
-        if busy():
+        require_approver(request)
+        if busy() or bank_busy():
             raise HTTPException(409, "a run is already in progress")
         prompt = ""
         try:
@@ -117,6 +165,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     @app.post("/api/approvals/voice")
     async def voice_approval(request: Request) -> dict[str, Any]:
+        require_approver(request)
         body = await request.json()
         transcript = str(body.get("transcript") or "")
         heard = spoken_code(transcript) or str(body.get("code") or "").lower()
@@ -133,6 +182,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     @app.post("/api/approvals/{approval_id}")
     async def decide(approval_id: str, request: Request) -> dict[str, bool]:
+        require_approver(request)
         run = state["run"]
         body = await request.json()
         if run is None or not run.broker.resolve(approval_id, bool(body.get("approved")), WEB_APPROVER, "web"):
@@ -185,7 +235,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     @app.post("/api/replay")
     def start_replay(pace: float = 0.7, run_id: str = "") -> dict[str, Any]:
-        if busy():
+        if busy() or bank_busy():
             raise HTTPException(409, "a run is already in progress")
         records = settings.records_dir
         gated_all = sorted(records.glob(f"{run_id}*-gated.jsonl" if run_id else "*-gated.jsonl"))
@@ -224,15 +274,16 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
     async def events(request: Request) -> StreamingResponse:
         queue = bus.subscribe()
         backlog = list(bus.history)
+        view = (lambda e: e) if authorized(request) else redact
 
         async def stream() -> Any:
             try:
                 for event in backlog:
-                    yield f"data: {json.dumps(event, default=str)}\n\n"
+                    yield f"data: {json.dumps(view(event), default=str)}\n\n"
                 while not await request.is_disconnected():
                     try:
                         event = await asyncio.wait_for(queue.get(), timeout=15)
-                        yield f"data: {json.dumps(event, default=str)}\n\n"
+                        yield f"data: {json.dumps(view(event), default=str)}\n\n"
                     except asyncio.TimeoutError:
                         yield ": keep-alive\n\n"
             finally:
@@ -262,17 +313,20 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         return {"sarvam": voice.enabled, "oncall_urls": urls}
 
     @app.get("/api/voice/escalations")
-    def voice_escalations() -> dict[str, Any]:
+    def voice_escalations(request: Request) -> dict[str, Any]:
         """Polling twin of /events for the on-call page (quick tunnels can buffer SSE)."""
         history = list(bus.history)
         run_id = next((e.get("run_id") for e in reversed(history) if e.get("type") == "run_start"), None)
         resolved = [e for e in history if e.get("type") == "approval_resolved"]
         done = {e.get("id") for e in resolved}
         pending = [e for e in history if e.get("type") == "approval_pending" and e.get("id") not in done]
-        return {"run_id": run_id, "pending": pending, "resolved": resolved}
+        if not authorized(request):
+            pending = [redact(e) for e in pending]
+        return {"run_id": run_id, "pending": pending, "resolved": resolved, "authorized": authorized(request)}
 
     @app.post("/api/voice/tts")
     async def voice_tts(request: Request) -> Response:
+        require_approver(request)
         body = await request.json()
         text = str((body or {}).get("text") or "").strip()
         if not text:
@@ -285,6 +339,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
 
     @app.post("/api/voice/stt")
     async def voice_stt(request: Request) -> dict[str, Any]:
+        require_approver(request)
         content_type = request.headers.get("content-type", "")
         if content_type.startswith("multipart/"):
             form = await request.form()
@@ -305,6 +360,144 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         except VoiceUnavailable as exc:
             raise HTTPException(503, str(exc))
         return {**result, "code": spoken_code(result["transcript"])}
+
+    @app.get("/bank")
+    def bank_page() -> FileResponse:
+        return FileResponse(STATIC / "index.html")
+
+    def client_id(request: Request) -> str:
+        forwarded = request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for", "").split(",")[0]
+        return forwarded.strip() or (request.client.host if request.client else "unknown")
+
+    def bank_rate_limit(request: Request) -> None:
+        now = time.monotonic()
+        limit, window = BANK_PER_CLIENT
+        who = client_id(request)
+        hits = [t for t in bank["hits"].get(who, []) if now - t < window]
+        overall: deque = bank["all"]
+        while overall and now - overall[0] > BANK_OVERALL[1]:
+            overall.popleft()
+        if len(hits) >= limit:
+            raise HTTPException(429, f"at most {limit} bank calls a minute; wait a few seconds")
+        if len(overall) >= BANK_OVERALL[0]:
+            raise HTTPException(429, "bank call budget for the last 10 minutes is used up; try again shortly")
+        hits.append(now)
+        overall.append(now)
+        bank["hits"][who] = hits
+
+    def bank_call() -> Any:
+        if bank["call"] is None:
+            from cleargate.approval import ApprovalBroker
+            from cleargate.bank.call import Call
+
+            bank["call"] = Call(settings, bus=bus, broker=ApprovalBroker(bus, approvals), stub=force_stub)
+        return bank["call"]
+
+    async def bank_turn(said: str, mode: str, phone: str, language: str | None = None) -> dict[str, Any]:
+        from cleargate.bank.call import run_call
+
+        if busy():
+            raise HTTPException(409, "an incident run is in progress; call the bank when it finishes")
+        if not bank["lock"].acquire(blocking=False):
+            raise HTTPException(409, "the bank line is busy with another caller")
+        previous = state["run"]
+        try:
+            call = await run_in_threadpool(bank_call)
+            # ESCALATEs on the bank line resolve through the existing approval routes.
+            state["run"] = SimpleNamespace(broker=call.broker, run_id="bank")
+            return await run_in_threadpool(lambda: run_call(said, mode=mode, phone=phone, stub=force_stub, speak=True,
+                                                            language=language, call=call))
+        finally:
+            if state["run"] is not None and getattr(state["run"], "run_id", None) == "bank":
+                state["run"] = previous
+            bank["lock"].release()
+
+    def bank_args(mode: Any, phone: Any) -> tuple[str, str]:
+        from cleargate.bank.call import DEFAULT_PHONE
+
+        mode = str(mode or "both")
+        if mode not in ("both", "stock", "gated"):
+            raise HTTPException(400, "mode must be both, stock or gated")
+        phone = str(phone or DEFAULT_PHONE).strip()
+        if not _PHONE.match(phone):
+            raise HTTPException(400, "phone must look like +91-98123-45678")
+        return mode, phone
+
+    @app.get("/api/bank/demo")
+    def bank_demo() -> dict[str, str]:
+        from cleargate.bank.call import DEMO_LINES
+
+        return dict(DEMO_LINES)
+
+    @app.post("/api/bank/call")
+    async def bank_call_text(request: Request) -> dict[str, Any]:
+        require_approver(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        text = str((body or {}).get("text") or "").strip()
+        if not text:
+            raise HTTPException(400, "text is required")
+        if len(text) > 600:
+            raise HTTPException(413, "keep the caller's turn under 600 characters")
+        mode, phone = bank_args(body.get("mode"), body.get("phone"))
+        bank_rate_limit(request)
+        return await bank_turn(text, mode, phone)
+
+    @app.post("/api/bank/call/audio")
+    async def bank_call_audio(request: Request) -> dict[str, Any]:
+        require_approver(request)
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None or isinstance(upload, str):
+            raise HTTPException(400, "multipart field 'file' is required")
+        mode, phone = bank_args(form.get("mode"), form.get("phone"))
+        audio = await upload.read()
+        if not audio:
+            raise HTTPException(400, "empty audio")
+        if len(audio) > 5_000_000:
+            raise HTTPException(413, "clip too long; keep it under 30 seconds")
+        if not voice.enabled:
+            raise HTTPException(503, "Sarvam is not configured; type the caller's turn instead")
+        bank_rate_limit(request)
+        kind = (upload.content_type or "audio/webm").split(";")[0].strip().lower()
+        name = "caller" + _AUDIO_EXT.get(kind, ".webm")
+        # Transcribe here so Safari's audio/mp4 clip reaches Sarvam with a matching file name.
+        try:
+            heard = await run_in_threadpool(voice.stt, audio, name, kind, "unknown")
+        except VoiceUnavailable:
+            try:
+                heard = await run_in_threadpool(voice.stt, audio, name, kind, "en-IN")
+            except VoiceUnavailable as exc:
+                raise HTTPException(503, str(exc))
+        transcript = str(heard.get("transcript") or "").strip()
+        if not transcript:
+            raise HTTPException(422, "heard nothing; hold the button and speak, or type instead")
+        language = heard.get("language_code")
+        return await bank_turn(transcript, mode, phone, language if language in ("hi-IN", "en-IN") else None)
+
+    def bank_record_path(name: str) -> Path:
+        if not re.fullmatch(r"bank-[\w.-]+-(stock|gated)\.jsonl", name):
+            raise HTTPException(404, "not a bank call record")
+        path = settings.records_dir / name
+        if not path.is_file():
+            raise HTTPException(404, "no such record")
+        return path
+
+    @app.get("/api/bank/record/{name}")
+    def bank_record(name: str, request: Request) -> Response:
+        require_approver(request)
+        return Response(bank_record_path(name).read_text(), media_type="text/plain; charset=utf-8",
+                        headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/bank/verify/{name}")
+    def bank_verify(name: str, request: Request) -> dict[str, str]:
+        require_approver(request)
+        from cleargate.scenario import verify_record
+
+        path = bank_record_path(name)
+        return {"record": name, "verified": verify_record(path), "offline": f"python verify.py records/{name}"}
 
     return app
 
