@@ -153,6 +153,7 @@ PASSTHROUGH = {
     "evidence": ("cleargate.evidence", "build a signed, self-verifying go-live evidence pack"),
     "bank": ("cleargate.bank.call", "one call to the bank voice support agent, stock vs gated"),
     "evolve": ("cleargate.evolve.run", "policy regression fuzzer: mutate the attack suite, find gaps, propose rules"),
+    "coverage": ("cleargate.coverage", "coverage matrix: attack class by deciding control, OWASP mapping, rule receipts"),
     "bench": ("cleargate.bench", "added latency of enforcement per tool call: direct vs through the enforcer"),
 }
 
