@@ -96,7 +96,7 @@ def run_campaign(stub: bool = True, seed: int = 7, approve: str = "none", llm_ca
     escalations = [e for e in bus.history if e.get("type") == "decision" and e.get("mode") == "gated"
                    and str(e.get("verb")).endswith("ESCALATE")]
     headline = (f"Stock agent: ₹{stock['moved_off_file_inr']:,} moved to accounts not on file across "
-                f"{stock['attack_calls']} attack calls. With AgntID: ₹{gated['moved_off_file_inr']:,} "
+                f"{stock['attack_calls']} attack calls. {'With AgntID' if gated['source'] == 'agntid' else 'Gated (local stand-in, not AgntID)'}: ₹{gated['moved_off_file_inr']:,} "
                 f"(across {gated['attack_calls']} attack calls; gated engine: {gated['source']}).")
     residual = [{"case": e["case"], "amount_inr": e["amount_inr"], "destination_account": e["destination_account"],
                  "closing_control": RESIDUAL_CONTROL} for e in gated["off_file_credits"]]
