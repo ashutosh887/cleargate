@@ -11,7 +11,6 @@ ESCALATED = "escalated"
 BLOCKED_POLICY = "blocked-by-policy"
 BLOCKED_INTENT = "blocked-by-intent-or-profile"
 ERROR = "error"
-DECISIONS = (ALLOWED, ESCALATED, BLOCKED_POLICY, BLOCKED_INTENT)
 
 
 def score_stub(cases: list[dict[str, Any]], policy_path: Path) -> list[dict[str, Any]]:

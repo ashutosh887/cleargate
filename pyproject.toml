@@ -2,7 +2,7 @@
 name = "cleargate"
 version = "0.1.0"
 description = "Go-live gate for AI agents that move money, change code or touch customer data. The agent acts. AgntID decides. The engineer signs."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "cryptography>=43",
     "fastapi>=0.115",

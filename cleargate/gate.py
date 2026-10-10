@@ -36,7 +36,6 @@ EVOLVED = ROOT / "attacks" / "evolved.json"
 TEAM = ("triage", "db", "fix", "comms")
 TEAM_FILE = "cleargate/agents/team.py"
 INFO_URI = "https://github.com/ashutosh887/cleargate"
-STOPPED = {"hidden", "denied", "blocked", "escalated"}
 
 
 @dataclass

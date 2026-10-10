@@ -100,10 +100,6 @@ class AgntIDEnforcer:
         reverse = {v: k for k, v in self.tool_names.items()}
         return reverse.get(name) or from_runtime_name(name, self.prefixes)
 
-    def list_runtime_tools(self) -> list[ToolSpec]:
-        tools = self._run(self.agntid.get_tools_list(self._client))
-        return [spec_from_mcp(self.cleargate_name(_name(t)), t) for t in tools if _name(t) not in CONTROL_TOOLS]
-
     def open_task(self, user_id: str, prompt: str, tools: list[ToolSpec]) -> TaskOpen:
         agntid = self.agntid
         runtime_tools = [t for t in self._run(agntid.get_tools_list(self._client)) if _name(t) not in CONTROL_TOOLS]

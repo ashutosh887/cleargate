@@ -303,7 +303,7 @@ def code_checks() -> None:
     rec = re.search(r"receipt ([0-9a-f]+)", out)
     code = re.search(r"approval code[^:]*:\s*(\S+)", out)
     if rec and code:
-        rc2, out2 = sh(f"{PY} -m cleargate.cli approve {rec.group(1)} --code {code.group(1)}", 60, env)
+        rc2, _ = sh(f"{PY} -m cleargate.cli approve {rec.group(1)} --code {code.group(1)}", 60, env)
         rc3, out3 = sh(f"{PY} -m cleargate.cli resume {rec.group(1)} --quiet", 180, env)
         ok = rc2 == 0 and rc3 == 0 and "MATCH" in out3
         add(S, "durable approval survives process exit (hibernate → approve → resume)", "PASS" if ok else "FAIL",

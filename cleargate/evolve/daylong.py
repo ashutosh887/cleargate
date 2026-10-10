@@ -13,7 +13,6 @@ import os
 import signal
 import sys
 import time
-from pathlib import Path
 from typing import Any
 
 from cleargate.config import ROOT

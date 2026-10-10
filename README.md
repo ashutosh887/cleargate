@@ -46,7 +46,7 @@ Each run plays step by step, stock and gated side by side, with the decision and
 
 ## Quickstart
 
-Requires Python 3.11+. Every step below runs offline with no keys.
+Requires Python 3.12+. Every step below runs offline with no keys.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
