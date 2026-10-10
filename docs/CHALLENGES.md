@@ -24,7 +24,7 @@ The runtime allows or denies; it does not hold a pending human approval. We buil
 
 ## 5. LLM intent needs a separate credential
 
-Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. Mode used for the final run: [engine pending the live runtime].
+Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. `scripts/runtime_proof.py` check 2 reports which engine the runtime used.
 
 ## 6. Parameter policies on the incident team are numeric
 
@@ -40,8 +40,12 @@ The intent parser downloads a model of about 900 MB on first start (per the comp
 
 ## 9. Deterministic demo vs real LLM
 
-LLM agents do not attack the same way every run. The scripted brain (`CLEARGATE_LLM=scripted`) follows the injection on every run, so stock vs gated is repeatable on stage; for free-form attacks (`cleargate attack "<prompt>"`) the brain that has quota today is Gemini through the OpenAI-compatible API (`CLEARGATE_LLM=openai`). The Bedrock and Anthropic brains are in the code but had no usable quota on the day.
+LLM agents do not attack the same way every run. The scripted brain (`CLEARGATE_LLM=scripted`) follows the injection on every run, so stock vs gated is repeatable on stage; for free-form attacks (`cleargate attack "<prompt>"`) the brain that has quota today is Gemini through the OpenAI-compatible API (`CLEARGATE_LLM=openai`). The Bedrock and Anthropic brains are in the code but could not run on the day: the Bedrock account had no access to Claude models, and the Anthropic key had no credit.
 
 ## 10. Honest labelling
 
 The offline stand-in can produce the same verbs as AgntID, which risks confusing the two. Every stand-in decision carries `source: local-policy-stand-in` and is shown as "(not AgntID)" in the CLI, the UI and the record.
+
+## 11. A runtime that doesn't answer
+
+The first adapter waited on every runtime round trip with no timeout, so one stalled call froze the run and the console. Every round trip now has a timeout (`AGNTID_TIMEOUT_S`, default 30 s), and a decision that never arrives is recorded as BLOCK `agntid-timeout`. An unreachable endpoint fails at start with the URL in the error, instead of a raw traceback.

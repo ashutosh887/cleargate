@@ -1,6 +1,6 @@
 # Architecture
 
-ClearGate has three parts: the agents under test, an enforcement seam that every tool call passes through, and an evidence layer (signed record, UI, GO / NO-GO). The headline agent is a bank's voice support line with five sub-agents that refunds failed UPI payments; the second is an on-call team fixing a payments incident. The public site is https://trycleargate.vercel.app. In live mode the Runtime Access Decision on every call comes from the AgntID runtime, including the merge after a human approves it. On the gated path ClearGate holds no credential for a tool it reaches through the runtime and executes no call itself.
+ClearGate is a go-live gate for any AI agent that takes real actions: moving money, changing code, or touching customer data. It has three parts: the agents under test, an enforcement seam that every tool call passes through, and an evidence layer (signed record, UI, GO / NO-GO). This repo ships two worked examples. One is a bank's voice support line, five sub-agents that refund failed UPI payments. The other is an on-call team fixing a payments incident. In live mode the Runtime Access Decision on every call comes from the AgntID runtime, including the merge after a human approves it. On the gated path ClearGate holds no credential for a tool it reaches through the runtime and executes no call itself.
 
 **Two policy sources, two jobs.** Under `CLEARGATE_ENFORCER=agntid`, every allow and deny is AgntID's: Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile Low / Medium / High), Parameter-Level Policies (Visual Policy Builder | Rego (Policy as Code)) and Intent-Based Controls, configured in the portal. `policy.yaml` is used only as the app-layer escalation list: its ESCALATE rules say which calls wait for a human approval bound to the args digest. Its ALLOW and BLOCK rules are not consulted for the decision; they serve the offline stand-in, the real-world reason shown on each card, and replay.
 
@@ -12,7 +12,7 @@ ClearGate has three parts: the agents under test, an enforcement seam that every
 | Incident team | `cleargate/agents/team.py` (`SYSTEMS`, `team_steps`), `cleargate/agents/loop.py` (`Agent`) | Orchestrator plus four sub-agents: triage, db, fix, comms. Each sees only the tools its gate returns. |
 | Brains | `cleargate/agents/brain.py` (`BedrockBrain`, `AnthropicBrain`, `OpenAICompatibleBrain`), `cleargate/agents/scripted.py` (`ScriptedBrain`) | `CLEARGATE_LLM` picks one. The scripted brain is deterministic and follows the injection on purpose, so stock vs gated is repeatable. |
 | Enforcement seam | `cleargate/enforcement.py` (`Enforcer` protocol, `EnforcementClient`, `StockClient`) | One place every call goes through. `EnforcementClient` asks the enforcer, handles ESCALATE, and records the outcome. `StockClient` calls tools directly and records them as `UNGUARDED`. |
-| AgntID adapter | `cleargate/agntid_enforcer.py` (`AgntIDEnforcer`) | `CLEARGATE_ENFORCER=agntid`. Talks to the runtime MCP endpoint with the `agntid` SDK. Holds ESCALATE calls for approval, then re-sends them through the runtime. |
+| AgntID adapter | `cleargate/agntid_enforcer.py` (`AgntIDEnforcer`) | `CLEARGATE_ENFORCER=agntid`. Talks to the runtime MCP endpoint with the `agntid` SDK. Holds ESCALATE calls for approval, then re-sends them through the runtime. Every round trip has a timeout (`AGNTID_TIMEOUT_S`, default 30 s). A call with no answer is recorded as BLOCK `agntid-timeout`, never as an allow. An unreachable endpoint fails at start with `AgntIDNotWired` and the URL. |
 | Local stand-in | `cleargate/enforcement.py` (`LocalPolicyStandIn`), `cleargate/policy.py` | `CLEARGATE_ENFORCER=local` (default). Evaluates `policy.yaml` offline. Labelled "not AgntID" everywhere. |
 | Approval broker | `cleargate/approval.py` (`ApprovalBroker`, `short_code`) | Holds a pending approval, resolves it by the spoken code on the `/oncall` call, a web click, or a Slack button. The code is 4 hex characters of an HMAC-SHA256 over the args digest under a server-held secret. |
 | Durable approval | `cleargate/durable.py` | `--durable` stores an escalated call as a SQLite receipt and exits; `cleargate approve` and `cleargate resume` finish it later into the same signed record. Codes are kept as a salted PBKDF2 verifier, 5 attempts, 24-hour expiry, one execution per receipt. |
@@ -27,9 +27,11 @@ ClearGate has three parts: the agents under test, an enforcement seam that every
 | Policy writer | `cleargate/policywriter.py` | AgntID's Runtime Operator Workflow, automated: Auto-Discover from a signed record → Define Policies → Simulate & Test (shadow replay with the stand-in evaluator) → Enforce (applied in the portal by hand) → Audit & Replay. |
 | Policy fuzzer | `cleargate/evolve/` | `cleargate evolve` mutates every attack the policy stopped and keeps what gets through; survivors go to `attacks/evolved.json`, which the CI gate re-runs. Deterministic, no LLM. |
 | Coverage matrix | `cleargate/coverage.py` | Attack class × deciding control with an OWASP mapping; writes `docs/coverage.html` and a signed record. |
-| CI gate | `cleargate/gate.py`, `.github/workflows/cleargate-gate.yml` | Attack suite plus legit run on PRs; exit 1 if an attack reached a tool; SARIF. |
+| CI gate | `cleargate/gate.py`, `.github/workflows/cleargate-gate.yml`, `action.yml` | Attack suite plus legit run on PRs; exit 1 if an attack reached a tool; SARIF. `action.yml` packages it as a composite GitHub Action (`uses: ashutosh887/cleargate@main`, inputs `policy`, `target`, `python-version`) for any agent repo. |
 | Evidence pack | `cleargate/evidence.py`, `cleargate/claims.py` | Signed folder with the decision record, `verify.py` and policy, for a go-live review. Its written report is claim-checked: a sentence survives only if its numbers, quotes and names match the record. |
-| Runtime proof | `scripts/runtime_proof.py` | PASS / FAIL checklist against the live runtime. |
+| Runtime proof | `scripts/runtime_proof.py`, `scripts/live_all.sh` | `runtime_proof.py` is a PASS / FAIL checklist against the live runtime. `live_all.sh` runs it, then re-measures every headline number through the runtime and verifies each record. |
+| Spoken attacks | `scripts/tts_replay.py`, `attacks/tts_replay.json` | Renders attack lines with Sarvam text-to-speech, transcribes them with the bank's own speech-to-text, and runs the result against stock and gated. |
+| Public call page | `site/try.html`, `site/api/call.py`, `site/api/voice.py` | Vercel functions that run the stub bank agent for a typed or spoken caller line and return both panes with their signed records. Local stand-in only; no model and no AgntID runtime behind them. |
 
 ## Trust boundaries
 
@@ -133,7 +135,7 @@ ClearGate blocks the retried merge: the agent changes the merge method and title
 
 ## The signed record and Audit & Replay
 
-The runtime's own Record Trace and Audit / Telemetry live in AgntID Reporting once the runtime is linked; we have no Reporting data yet. ClearGate's record adds the ESCALATE and approval lines, signs every line, and `cleargate replay` / `cleargate diff` re-run recorded calls under a changed policy.
+The runtime's own Record Trace and Audit / Telemetry live in AgntID Reporting. ClearGate's record adds the ESCALATE and approval lines, signs every line, and `cleargate replay` / `cleargate diff` re-run recorded calls under a changed policy.
 
 One JSONL file per run and mode, `records/<run>-<mode>.jsonl`.
 
@@ -150,6 +152,7 @@ One JSONL file per run and mode, `records/<run>-<mode>.jsonl`.
 | `AGNTID_DIRECT_APPROVED_EXECUTE` | `0` (default), `1` | `0`: an approved call goes back through the runtime. `1`: fallback; ClearGate runs it on its own client and labels the line "runtime bypassed" |
 | `CLEARGATE_LLM` | `scripted` (default), `bedrock`, `anthropic`, `openai` | Which brain drives the agents. The stage run uses `scripted` on purpose, so both panes get the same input |
 | `CLEARGATE_GITHUB`, `CLEARGATE_POSTGRES`, `CLEARGATE_SLACK` | `stub` (default), `live` | Tool backends |
+| `PAYEE_CHECK` | `on` (default), `off` | The bank's own payee check in `refund_to_account`. Same setting for stock and gated. `off` isolates the agent layer, so stock visibly moves money |
 | `--stub` flag | n/a | Forces every tool to its stub |
 
 ## Ports

@@ -1,6 +1,6 @@
 # Running the demo
 
-The public site is https://trycleargate.vercel.app. The bank voice agent (`/bank`) is the headline; the payments incident team is the second scenario.
+ClearGate gates any agent that takes real actions. The demo uses two worked examples: the bank voice agent (`/bank`) and the payments incident team. Without installing anything, anyone can place a typed or spoken call at https://trycleargate.vercel.app/try.html (local stand-in).
 
 Three levels, from no dependencies to the full live run. If a level fails on stage, drop to the next one down.
 
@@ -8,7 +8,7 @@ Three levels, from no dependencies to the full live run. If a level fails on sta
 |---|---|---|---|
 | A. Live | AgntID runtime, portal, Postgres, MCP servers, GitHub token, LLM key (optional) | AgntID runtime | Normal |
 | B. Offline | Python only | Local stand-in, labelled "not AgntID" | Runtime, network or portal down |
-| C. Recorded | A saved record and the video | Whatever the record says (`source` field) | Laptop or UI fails |
+| C. Recorded | A saved record and the public call page | Whatever the record says (`source` field) | Laptop or UI fails |
 
 ## A. Live run
 
@@ -47,12 +47,12 @@ CLEARGATE_LLM=scripted               # deterministic on stage; openai (Gemini, O
 Checks (all should pass before the demo):
 
 - [ ] Portal, Runtimes: runtime Connected.
-- [ ] Portal, MCP servers: `payments` (5 tools), `comms` (3 tools), `github` Applied.
+- [ ] Portal, MCP servers: `payments` (10 tools), `comms` (3 tools), `github` Applied.
 - [ ] Portal, Tools: `run_sql` and `post_message` disabled; profile Medium.
 - [ ] Portal, Access Policies: `limit` 1 to 100, `amount_inr` 1 to 5000, `refund_to_account.amount_inr` 1 to 5000, and `bank-destination-allowlist` on `refund_to_account.destination_account`.
 - [ ] Inspector: `payments_issue_refund` with `amount_inr=6000` is denied.
 - [ ] `python scripts/runtime_proof.py` exits 0.
-- [ ] `cleargate attack-suite --target agntid` does not say "runtime not ready".
+- [ ] `scripts/live_all.sh` finishes, and every record it lists says MATCH.
 
 ### On stage (3:00)
 
@@ -76,7 +76,7 @@ Open before starting: `/bank` full screen; a terminal with the two campaign comm
 6. **GO and the signed record (2:15 to 2:45).** The second scenario, the payments-incident team: press **G** for the Go-live screen (stock 8 of 8 out-of-task calls reached a tool, NO-GO; gated 0 of 7, GO), then `verify.py` prints MATCH.
 7. **Close (2:45 to 3:00).** "The agent acts. AgntID decides. The engineer signs."
 
-Numbers in steps 2 to 6 were measured on 10 Oct 2026 with the local stand-in (`--stub`), labelled "not AgntID". With the runtime linked, run the same steps without `--stub` and with `CLEARGATE_ENFORCER=agntid`, and quote only what the runtime returns.
+Numbers in steps 2 to 6 were measured on 10 Oct 2026 with the local stand-in (`--stub`), labelled "not AgntID". With the runtime linked, `scripts/live_all.sh` re-runs them through AgntID. Quote only what the runtime returns.
 
 Approval beat (optional, the payments incident): the fix agent's merge escalates, the engineer approves by voice on `/oncall`, and a retried merge with changed arguments is blocked because the approval digest no longer matches. Fallback: the mic or a click on the approval card (`/api/approvals/voice` takes a transcript).
 
@@ -93,7 +93,7 @@ Say on stage: "This is the offline stand-in, labelled 'not AgntID'. It mirrors t
 
 - Re-run a saved incident run's recorded calls: `cleargate replay records/<run>-gated.jsonl` (the web UI also has a replay action, `/api/replay`, key R). For the bank line, re-run `cleargate bank --demo branch --stub`; it is deterministic. `cleargate replay` does not bind the bank call's session, so it is not used on `bank-*.jsonl` records.
 - Verify it: `python verify.py records/<run>-gated.jsonl`.
-- Play the demo video: [video link].
+- Place the same calls on https://trycleargate.vercel.app/try.html, which runs the stub bank agent and shows each pane's signed-record check.
 
 ## Troubleshooting
 

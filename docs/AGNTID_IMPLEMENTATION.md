@@ -1,6 +1,6 @@
 # AgntID implementation
 
-Every AgntID feature ClearGate uses, where it is configured, and why. Policies are configured in the AgntID portal (there is no policy API) and enforced by the customer-hosted runtime running in Docker on our machine. SDK calls live in `cleargate/agntid_enforcer.py` (`AgntIDEnforcer`).
+Every AgntID feature ClearGate uses, where it is configured, and why, shown on the two worked examples (bank voice agent, incident team). Policies are configured in the AgntID portal (there is no policy API) and enforced by the customer-hosted runtime running in Docker on our machine. SDK calls live in `cleargate/agntid_enforcer.py` (`AgntIDEnforcer`).
 
 ## Setup
 
@@ -18,7 +18,7 @@ Every AgntID feature ClearGate uses, where it is configured, and why. Policies a
 | Server id | Transport and address (from inside Docker) | Tools | Credential |
 |---|---|---|---|
 | `github` | Official GitHub remote MCP, `https://api.githubcopilot.com/mcp/` | issue, file, branch, PR, merge tools | `bearer_token` from the runtime's `GITHUB_TOKEN`. Agents never see it. |
-| `payments` | Remote HTTP, `http://host.docker.internal:9101/mcp` (`cleargate mcp-serve`) | `query_refunds(order_id, limit)`, `get_order(order_id)`, `issue_refund(order_id, amount_inr)`, `export_customer_records(segment)`, `run_sql(sql)` | none (local) |
+| `payments` | Remote HTTP, `http://host.docker.internal:9101/mcp` (`cleargate mcp-serve`) | Incident: `query_refunds(order_id, limit)`, `get_order(order_id)`, `issue_refund(order_id, amount_inr)`, `export_customer_records(segment)`, `run_sql(sql)`. Bank: `get_customer`, `get_account`, `get_failed_payment`, `refund_to_account(payment_id, amount_inr, destination_account)`, `get_statement` | none (local) |
 | `comms` | Remote HTTP, `http://host.docker.internal:9102/mcp` | `post_incident_update(text)`, `post_message(channel, text)`, `send_email(to, subject, body)` | Slack bot token on the server, if set |
 
 `export_customer_records`, `run_sql`, `post_message` and `send_email` exist on purpose. A real MCP server exposes more than the task needs; the point is to show AgntID removing them.
@@ -29,17 +29,17 @@ Eight AgntID controls and one ClearGate layer. The rows that change the incident
 
 | # | Control | Portal location | Setting | Effect in the demo | Real-world reason |
 |---|---|---|---|---|---|
-| 1 | Protection profile and high-impact label (visibility at `list_tools`) | Runtime Setup, Protection Profile; Access Control, Advanced, Correct Label | **Medium** (READ_WRITE): delete and execute tools hidden; `export_customer_records` labelled high impact | Tool list drops from [N] to [M] at task open; export not visible to the task | PCI DSS Req 7, need-to-know |
+| 1 | Protection profile and high-impact label (visibility at `list_tools`) | Runtime Setup, Protection Profile; Access Control, Advanced, Correct Label | **Medium** (READ_WRITE): delete and execute tools hidden; `export_customer_records` labelled high impact On the stand-in the incident team sees 11 of 49 tools at task open (GitHub 41 to 7); export not visible to the task. The runtime's own counts come from `scripts/runtime_proof.py` check 1 | PCI DSS Req 7, need-to-know |
 | 2 | Per-tool disable | Access Control, Tools | `payments_run_sql` and `comms_post_message` disabled; `post_incident_update` (hard-wired to `#inc-4471`) stays | Raw SQL never available; no posts outside the incident room | PCI DSS Req 3: raw SQL bypasses every control on `customers.cards` |
 | 3 | Parameter limits | Access Policies, MCP policy | `payments.query_refunds.limit` 1 to 100; `payments.issue_refund.amount_inr` 1 to 5000 | The agent's `limit=5000` and `amount_inr=9998` are outside the bounds; Inspector `amount_inr=6000` denied; `limit=20` allowed | DPDP purpose limitation; RBI maker-checker on money movement |
-| 4 | Intent check | Operations, Configuration, Intent engine | LLM-based if the runtime has an OpenAI credential, otherwise Standard (the portal label; the deck's ML-based, semantic evaluation). [engine pending the live runtime] | Injected export and email denied as off-intent | Intent is checked on the call, not on the text the agent read |
+| 4 | Intent check | Operations, Configuration, Intent engine | LLM-based if the runtime has an OpenAI credential, otherwise Standard (the portal label; the deck's ML-based, semantic evaluation). `scripts/runtime_proof.py` check 2 reports which engine the runtime used | Injected export and email denied as off-intent | Intent is checked on the call, not on the text the agent read |
 | 5 | Runtime-held credential | MCP server entry, auth `bearer_token` | GitHub token held by the runtime only | The gated agents never hold it; the stock agent holds the PAT | No standing PAT on the gated path |
-| 6 | Per-agent authority via delegations | SDK: `send_delegation_open` per hand-off | Each sub-agent has its own tool allowlist; triage and db are read-only | DELEGATION lines with `constraints`. Whether the runtime denies a read-only agent's write on its own: [pending the live runtime] | 7 of 12 sub-agents lost "do not modify" in AgntID's experiment |
+| 6 | Per-agent authority via delegations | SDK: `send_delegation_open` per hand-off | Each sub-agent has its own tool allowlist; triage and db are read-only | DELEGATION lines with `constraints`. Whether the runtime denies a read-only agent's write on its own is checked by `scripts/live_all.sh` | 7 of 12 sub-agents lost "do not modify" in AgntID's experiment |
 | 7 | Task close ends authority | SDK: `send_task_open_details`, `send_task_close` | Access exists only while the task is open | A call after close is denied | Just-for-task access |
 | 8 | Parameter-Level Policy `bank-destination-allowlist` (bank voice agent) | Access Policies, MCP policy | `payments_refund_to_account.destination_account`, string allow-list of the registered accounts on file (`50100234567812`, `50100876543219` in the sandbox) | A refund to any other account is denied before the tool runs. Forced by the bargaining caller campaign: gated ₹15,580 → ₹0 (local stand-in, seed 7) | Refunds credit only a registered account; the caller is the policy variable |
 | A | **ClearGate layer (app layer, not AgntID-native):** approval bound to the args digest | Access Control, Tools / policy for the runtime side | `policy.yaml` marks the merge ESCALATE; ClearGate binds the engineer's approval to the SHA-256 digest of the exact arguments and re-sends the call through the runtime, which makes the final decision | Merge waits for the engineer; a merge retried with different arguments is blocked by ClearGate because the approval digest no longer matches | RBI IT governance: change management, maker-checker |
 
-Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator) can check policies before the live run, and **Reporting** shows the runtime's ALLOW and BLOCK decisions. Neither has been used for this project yet: [screenshot once done]. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
+Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator) can check policies before the live run, and **Reporting** shows the runtime's ALLOW and BLOCK decisions. Neither is part of the measured runs in this repo. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
 
 Every rule above also appears in `policy.yaml` with its reason, so the offline stand-in behaves the same way. The two are kept in sync by hand.
 
@@ -72,7 +72,8 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 | Call | `wrap_client(client, task_id, delegation_id, task_argument, delegation_argument)`, then `call_tool_async(name, args)` | `_invoke_wrapped` | Adds `_task_id` and `_delegation_id` so the runtime evaluates the call in context |
 | Denial | `get_last_denial(clear=True)` | `_invoke_wrapped` | Policy name, reason, `denial_step`, `intent_mismatch`, verdict code; `review_required` maps to ESCALATE |
 | Envelope (alt.) | `parse_decision(payload)` | `_invoke_envelope` | Used when `AGNTID_REVIEW_SHAPE=envelope` |
-| Task close | `send_task_close(client, task_id)` | `close_task` | Ends just-for-task access; later calls are denied |
+| Task close | `send_task_close(client, task_id)` | `close_task` | Ends just-for-task access; later calls are denied. Safe to call twice |
+| Timeout | every round trip above | `AgntIDEnforcer._run`, `_decide` | `AGNTID_TIMEOUT_S` (default 30 s). A decision with no answer becomes BLOCK `agntid-timeout` (`denial_step: transport`). No answer is never an allow |
 
 ## Approval: built on AgntID, not by AgntID
 
@@ -88,8 +89,8 @@ AgntID allows or denies; it does not hold a pending human approval. ClearGate ad
 
 | Claim | Evidence |
 |---|---|
-| Decisions come from the runtime | Record lines with `source: "agntid"`; the runtime's ALLOW and BLOCK decisions in portal Reporting [screenshot] |
+| Decisions come from the runtime | Record lines with `source: "agntid"`; the runtime's ALLOW and BLOCK decisions in portal Reporting |
 | Tool list narrowed | TASK_OPEN line: `eligible_tool_count`, `relevant_tool_count`, `relevant_tool_names`, `snapshot_id` |
-| Parameter policy | Inspector denial for `amount_inr=6000` [screenshot]; BLOCK line for `limit=5000` |
-| Intent | BLOCK line with `intent_mismatch` / `denial_step`; Simulator trace [screenshot] |
+| Parameter policy | Inspector denial for `amount_inr=6000`; BLOCK line for `limit=5000`; `runtime_proof.py` checks 3a to 3d |
+| Intent | BLOCK line with `intent_mismatch` / `denial_step`; `runtime_proof.py` check 4 |
 | Credential custody | `python scripts/runtime_proof.py` check 5. In `agntid` mode `AgntIDEnforcer.invoke` sends every call to the runtime and never uses ClearGate's own tool clients, so the GitHub token is used only by the runtime's MCP server entry |
