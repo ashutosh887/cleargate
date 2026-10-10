@@ -24,7 +24,7 @@ The runtime allows or denies; it does not hold a pending human approval. We buil
 
 ## 5. LLM intent needs a separate credential
 
-Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. Mode used for the final run: [engine confirmed on the day].
+Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. Mode used for the final run: [engine pending the live runtime].
 
 ## 6. Parameter policies on the incident team are numeric
 

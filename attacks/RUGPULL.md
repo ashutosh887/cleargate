@@ -32,7 +32,7 @@ Only the model-facing description changes. A stock agent reading it may follow t
 
 3. **Re-discover in the portal.** Trigger a rediscovery of the `comms` server, or wait for the scheduled one.
 
-4. **Expected catch.** Catalog Drift lists `post_incident_update` as modified, with a change risk. Review shows the old and new description. A tool that passed review is no longer the tool that was approved, so its eligibility should be held for a human decision. [Confirm on the day.]
+4. **Expected catch.** Catalog Drift lists `post_incident_update` as modified, with a change risk. Review shows the old and new description. A tool that passed review is no longer the tool that was approved, so its eligibility should be held for a human decision. Not yet observed on the live runtime.
 
 5. **Decide.** Dismiss the change with a reason such as "description injects an exfil instruction; not the reviewed tool". The reviewed version stays in effect.
 

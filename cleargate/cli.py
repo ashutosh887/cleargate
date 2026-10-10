@@ -128,15 +128,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     from cleargate.web.app import create_app
 
-    extra: dict[str, Any] = {}
-    if args.durable:
-        import inspect
-
-        if "durable" not in inspect.signature(create_app).parameters:
-            print("this web app has no durable wiring yet; see cleargate/DURABLE_WIRING.md")
-            return 1
-        extra["durable"] = True
-    uvicorn.run(create_app(approvals=args.approve, force_stub=args.stub, **extra), host=args.host, port=args.port)
+    uvicorn.run(create_app(approvals=args.approve, force_stub=args.stub, durable=args.durable), host=args.host, port=args.port)
     return 0
 
 

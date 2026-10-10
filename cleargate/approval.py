@@ -134,10 +134,6 @@ class ApprovalBroker:
             return False
         return self.resolve(matches[0], approved, approver_id, via)
 
-    def pending_ids(self) -> list[str]:
-        with self._lock:
-            return list(self._pending)
-
     def _post_to_slack(self, req: ApprovalRequest) -> bool:
         if self.slack is None:
             return False
