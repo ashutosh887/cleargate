@@ -1,48 +1,65 @@
 # Recording the 3-minute demo video (macOS)
 
-The narration and beats follow `docs/DEMO.md`. These are the capture mechanics.
+The beats follow `docs/DEMO.md` ("On stage"). These notes cover the capture mechanics.
 
-## Before you record (5 min)
+## Before you record (15 min)
 
-1. Close Slack, Mail, and any other app that pops notifications. Turn on Focus (Do Not Disturb) from Control Center.
-2. Set the display to 1600x900 or 1920x1080 (System Settings > Displays). Chrome zoom 100%.
-3. Terminal 1, start the server:
-   - Real runtime: `CLEARGATE_ENFORCER=agntid .venv/bin/cleargate serve --approve web --port 8700`
-   - Fallback: `.venv/bin/cleargate serve --stub --approve web --port 8700`. The header badge will read "Local policy stand-in, not AgntID". Don't say "AgntID decides" over that footage.
-4. Chrome window 1, full screen (Ctrl+Cmd+F): `http://localhost:8700`. Click the page once so the keys R and G work.
-5. Chrome window 2: AgntID portal with Reporting and the Simulator open in tabs.
-6. Phone: open the `/oncall` URL printed on the ESCALATE card (same Wi-Fi). Keep it unlocked, volume up.
-7. Terminal 2: `python verify.py records/<run>-gated.jsonl` typed but not run. Font size 20pt or larger (Cmd +).
-8. Mic: run a 10-second test recording and play it back.
+1. Close Slack, Mail and Messages, and turn on Focus (Do Not Disturb) from Control Center.
+2. Set the display to 1920x1080 or 1600x900 (System Settings > Displays). Use Chrome zoom 110% on `/bank` and the main UI, and 100% elsewhere.
+3. In terminal 1, start the services:
+   ```bash
+   source .venv/bin/activate
+   export CLEARGATE_LLM=scripted PAYEE_CHECK=off
+   python scripts/runtime_proof.py        # exit 0: live; otherwise record the stand-in and say so
+   cleargate serve --stub --port 8700      # live: CLEARGATE_ENFORCER=agntid cleargate serve --port 8700
+   ```
+   With `--stub` the badge reads "Local stand-in: simulation, not AgntID". Don't say "AgntID decided" over that footage. `serve` prints an approver key, so keep that terminal off screen.
+4. Write the "before" policy for the campaign beat outside the repo (`policy.yaml` minus the `bank-destination-allowlist` rule), and export its path as `BEFORE`.
+5. Run the payments incident once in the main UI (**Run incident**, then wait for "run done"), so that **G** has a Go-live screen to show.
+6. Open the Chrome tabs in this order:
+   1. title or `site/index.html`
+   2. `localhost:8700/bank`
+   3. a copy of `docs/evolution.html`
+   4. PR #3, Checks tab
+   5. `localhost:8700`
+
+   Click inside each ClearGate page once, so that the keys B, G and R work.
+7. In terminal 2, set the font to 20 pt or larger and put three commands in the history:
+   - `CLEARGATE_POLICY=$BEFORE cleargate bank --campaign --stub --seed 7 | tail -12`
+   - `cleargate bank --campaign --stub --seed 7 | tail -10`
+   - `python verify.py records/<run>-gated.jsonl`
+8. Do a mic and speaker test: record 10 seconds plus one spoken agent reply, then play it back on headphones. macOS doesn't capture system audio, so either let the mic pick up the speakers (volume about 60%, no headphones) or add the reply WAV in the edit. To get the WAV: `cleargate bank --demo branch --stub --mode gated --speak --save-audio reply.wav`.
 
 ## Start the recording
 
-- Press Cmd+Shift+5, choose **Record Entire Screen**. Under Options pick your mic, turn **Show Mouse Clicks** on, and set Save to Desktop. Click Record.
-- Alternative: QuickTime Player > File > New Screen Recording opens the same toolbar.
-- To capture the phone, connect it by USB and use QuickTime > File > New Movie Recording, then pick the iPhone as the camera. Record it as a separate clip, or film it with a second phone.
+- Press Cmd+Shift+5 and choose **Record Entire Screen**. Under Options, pick your mic, turn on **Show Mouse Clicks**, and set Save to Desktop. Then click Record.
+- QuickTime Player > File > New Screen Recording opens the same toolbar.
 
 ## Beats (target times)
 
 | Time | Window | Action |
 |---|---|---|
-| 0:00–0:20 | ClearGate | Title strip is visible. Say the opening line. |
-| 0:20–0:45 | ClearGate | Click the mic and speak the incident (or click **Run incident**). Point at NARROW "49 → 11" and the green ALLOW cards. |
-| 0:45–1:15 | ClearGate | Scroll the right pane to the red BLOCK cards (export, email, write to main). Left pane shows the same calls EXECUTED. |
-| 1:15–1:50 | ClearGate + phone | ESCALATE card shows "Say approve `xxxx`". Answer on the phone, or click the card's mic, and say "approve x x x x". The merge goes green, then the swapped target turns red with "Approval is not a bypass". |
-| 1:50–2:10 | Chrome window 2 | Switch with Cmd+` to show Reporting, then the Simulator audit for the export. Skip this beat if the run used the stand-in. |
-| 2:10–2:35 | Terminal 2 | Press Enter on `verify.py` and show MATCH. |
-| 2:35–3:00 | ClearGate | Press **G** for the Go-live screen. Say the closing line only if every check is green. |
+| 0:00–0:15 | Title | "7 of 12 sub-agents lost 'do not modify'." Say the opening line. |
+| 0:15–0:32 | `/bank` | Click the LEGIT line. Both panes refund ₹2,340 to the account on file. |
+| 0:32–1:05 | `/bank` | Hold **Hold to talk** and say the branch line, or click BRANCH. Stock sends ₹48,000. Gated shows a BLOCK card, and the agent speaks the refusal. Let the audio play. |
+| 1:05–1:40 | Terminal 2 | Run the before campaign (stock ₹2,22,840, gated ₹15,580), then the after campaign (gated ₹0). |
+| 1:40–2:02 | `evolution.html` | Generation 2: 5 spellings of `main` got through. Then 0 gaps in 585 cases. |
+| 2:02–2:20 | PR #3 | Checks tab, red: "NO-GO: merged by the agent with no human approval". |
+| 2:20–2:45 | Main UI, then Terminal 2 | Press **G** for the Go-live screen, then press Enter on `verify.py` to show MATCH. |
+| 2:45–3:00 | `/bank` | Closing line: "The agent acts. AgntID decides. The engineer signs." |
 
 Stop the recording from the menu-bar stop button, or press Cmd+Ctrl+Esc.
 
-## If something goes wrong live
+## If something goes wrong
 
-- If the run stalls or errors, press **R** in the ClearGate window. It replays the last signed record at the same pace in the same UI, and the badge changes to "replay". Say so on camera.
-- If voice approval fails, click **Approve** on the card. The record still binds the approval to the arguments digest.
-- If the Go-live overlay doesn't open, press **G**. Esc closes it.
-- If the take can't be saved, use the 90-second shot list at the bottom of `demo-script-final.md` with the stills in `docs/screenshots/` (regenerate them with `python scripts/capture.py`).
+- **The bank call fails.** Click the BRANCH line instead of speaking. If the server is down, run `cleargate bank --demo branch --stub` in the terminal.
+- **The incident run stalls.** Press **R** in the main UI. It replays the last signed record in the same UI and the badge changes to "replay". Say so on camera.
+- **The Go-live overlay doesn't open.** Press **G**. Esc closes it.
+- **Sarvam fails (no audio).** The reply text is still on the card, so read it aloud.
 
 ## After recording
 
-- Trim with QuickTime > Edit > Trim (Cmd+T) to 3:00 or less. Export with File > Export As > 1080p.
-- Watch it once with sound. Check that the code you spoke matches the code on screen, and that no tokens, `.env` contents, or `/Users/...` paths are readable. The Go-live footer prints the absolute record path.
+- Trim to 3:00 or less in QuickTime with Edit > Trim (Cmd+T). Export with File > Export As > 1080p.
+- Watch it once with sound and check:
+  - No tokens, approver key, `.env` contents or `/Users/...` paths are readable.
+  - Every claim that says "AgntID decided" sits over footage that ran on the runtime.
