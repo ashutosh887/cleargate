@@ -8,6 +8,17 @@ There is no way for a bank's platform team to prove a voice agent that moves mon
 
 **The agent acts. AgntID decides. The engineer signs.**
 
+ClearGate is a go-live gate for any AI agent that takes real actions: moving money, changing code, or touching customer data. The bank voice agent and the incident team are two worked examples. The same gate fits:
+
+- **Banking and payments:** voice and chat agents that refund, transfer or reverse.
+- **Customer support:** agents that issue credits, refunds and account changes.
+- **DevOps and on-call:** agents that branch, merge, deploy and post to incident channels.
+- **Healthcare and insurance:** agents that read patient or claim records and file updates.
+- **E-commerce:** order, returns and payout agents.
+- **Internal ops, HR and finance:** agents that touch payroll, vendor payments or employee data.
+
+What a team gets: a CLI and a GitHub Action that run the gate on every pull request, an attacker that evolves against your own policy, a least-privilege policy writer, a human approval bound to the exact arguments, and a signed record an auditor verifies offline.
+
 **Try it:** place a call at https://trycleargate.vercel.app/try.html. Pick a caller or type your own line, in English or Hinglish, and see the stock and gated agents side by side with the decision, the rule and the rupees moved. It runs the same code as `cleargate bank --stub`, on the local stand-in.
 
 ![A Hinglish "RBI fraud cell" call. Left, the stock agent sends ₹30,000 to a new account. Right, the gated agent never sees the refund tool and tells the caller why in Hindi.](docs/screenshots/10-bank-call.png)
