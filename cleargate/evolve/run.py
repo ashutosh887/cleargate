@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     a.set_path = a.set_path or EVOLVED_SET
     a.html = a.html or HTML
     code, summary = run_once(a)
-    if summary:
+    if summary and (a.policy or Settings().policy_path).resolve() == Settings().policy_path.resolve():
         daylong.record_run(summary)
     return code
 
