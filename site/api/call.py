@@ -41,6 +41,13 @@ def step(d: dict) -> dict:
     return {k: d.get(k) for k in ("kind", "verb", "agent", "tool", "args", "rule", "reason", "executed", "denial_step")}
 
 
+def record_text(path: str | None) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8") if path else ""
+    except OSError:
+        return ""
+
+
 def turn(text: str, phone: str) -> dict:
     result = run_call(text, mode="both", phone=phone, speak=False)
     panes = {}
@@ -49,7 +56,8 @@ def turn(text: str, phone: str) -> dict:
                  if d["mode"] == mode and d["kind"] in ("call", "notice", "task_open")]
         panes[mode] = {"source": pane["source"], "reply": pane["reply_text"], "steps": steps,
                        "moved_off_file_inr": pane["moved_off_file_inr"], "counts": pane["counts"],
-                       "ledger": pane["ledger"], "verified": pane["verified"], "error": pane["error"]}
+                       "ledger": pane["ledger"], "verified": pane["verified"], "error": pane["error"],
+                       "record": record_text(pane.get("record"))}
     return {"transcript": result["transcript"], "language": result["language"], "phone": phone, "panes": panes}
 
 

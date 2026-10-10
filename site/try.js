@@ -67,6 +67,19 @@
     return li;
   }
 
+  function countUp(node, to) {
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!to || reduce) { node.textContent = rupees(to); return; }
+    var t0 = null;
+    var tick = function (t) {
+      t0 = t0 || t;
+      var k = Math.min(1, (t - t0) / 900);
+      node.textContent = rupees(Math.round(to * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   function draw(mode, pane) {
     var gated = mode === 'gated';
     var box = document.getElementById('pane-' + mode);
@@ -74,61 +87,57 @@
     var moved = pane.moved_off_file_inr || 0;
     var fig = el('p', 'moved');
     fig.appendChild(el('span', 'moved-label', 'Moved to accounts not on file'));
-    fig.appendChild(el('span', 'moved-fig ' + (moved ? 'bad' : 'good'), rupees(moved)));
+    var num = el('span', 'moved-fig ' + (moved ? 'bad' : 'good'), rupees(0));
+    fig.appendChild(num);
     box.appendChild(fig);
+    countUp(num, moved);
     box.appendChild(el('blockquote', 'reply', pane.reply || pane.error || ''));
     var list = el('ol', 'steps');
-    (pane.steps || []).forEach(function (s) { list.appendChild(stepRow(s, gated)); });
+    (pane.steps || []).forEach(function (s, i) {
+      var row = stepRow(s, gated);
+      row.style.setProperty('--d', (i * 0.12) + 's');
+      list.appendChild(row);
+    });
     box.appendChild(list);
-    box.appendChild(el('p', 'fine', (gated ? 'Decided by ' + pane.source + '. ' : 'No enforcement. ') + (pane.verified || '')));
+    var foot = el('p', 'fine', (gated ? 'Decided by ' + pane.source + '. ' : 'No enforcement. ') + (pane.verified || ''));
+    if (pane.record) {
+      var a = el('a', null, 'Download the signed record');
+      a.href = URL.createObjectURL(new Blob([pane.record], { type: 'application/x-ndjson' }));
+      a.download = 'cleargate-' + mode + '.jsonl';
+      foot.appendChild(document.createTextNode(' '));
+      foot.appendChild(a);
+    }
+    box.appendChild(foot);
   }
+
+  function render(body) {
+    draw('stock', body.panes.stock);
+    draw('gated', body.panes.gated);
+    duel.hidden = false;
+    duel.classList.remove('landed');
+    void duel.offsetWidth;
+    duel.classList.add('landed');
+    status.textContent = 'Heard (' + body.language + '): "' + body.transcript + '"';
+    duel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  // voice.js hands spoken calls to the same renderer.
+  window.cleargateRender = render;
 
   form.addEventListener('submit', function (ev) {
     ev.preventDefault();
     var text = said.value.trim();
     if (!text) { said.focus(); return; }
     go.disabled = true;
-    status.textContent = 'Calling…';
+    status.textContent = 'Calling the support line…';
     fetch('/api/call', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: text, phone: callerPhone }) })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (res) {
         if (!res.ok) throw new Error(res.body.error || 'The call failed.');
-        draw('stock', res.body.panes.stock);
-        draw('gated', res.body.panes.gated);
-        duel.hidden = false;
-        status.textContent = 'Heard (' + res.body.language + '): "' + res.body.transcript + '"';
-        duel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        render(res.body);
       })
       .catch(function (e) { status.textContent = e.message; })
       .finally(function () { go.disabled = false; });
   });
 
-  // Optional: the browser's own speech recognition, no server key involved.
-  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SR) {
-    var mic = document.getElementById('mic');
-    var lang = document.getElementById('lang');
-    mic.hidden = false;
-    lang.hidden = false;
-    var rec = null;
-    mic.addEventListener('click', function () {
-      if (rec) { rec.stop(); return; }
-      rec = new SR();
-      rec.lang = lang.value;
-      rec.interimResults = true;
-      rec.onresult = function (e) {
-        said.value = Array.prototype.map.call(e.results, function (r) { return r[0].transcript; }).join(' ');
-      };
-      rec.onend = function () {
-        mic.textContent = 'Speak';
-        rec = null;
-        if (said.value.trim()) form.requestSubmit();
-      };
-      rec.onerror = function (e) { status.textContent = 'Microphone: ' + e.error; };
-      mic.textContent = 'Stop';
-      status.textContent = 'Listening…';
-      rec.start();
-    });
-  }
 })();

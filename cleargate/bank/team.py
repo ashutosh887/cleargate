@@ -34,9 +34,20 @@ ORDER = re.compile(r"\b(?:send|transfer|move|credit|bhej|bhejo|daal|dalo)\b|भ�
 Script = Generator[ToolCall | str, dict[str, Any] | None, None]
 
 
+SPOKEN = re.compile(r"\b(\d+(?:\.\d+)?)\s*(hazaa?r|thousand|k|lakh|lac)\b", re.I)
+BARE = re.compile(r"(?<![\d,])(\d{1,3}(?:,\d{2,3})+|\d{3,7})(?![\d,])")
+
+
 def amount_in(text: str) -> int | None:
+    """₹/rs-marked amounts first; then spoken '30 hazaar' / '2 lakh'; then a bare 3-7 digit figure (account numbers are 9+)."""
     m = AMOUNT.search(text or "")
-    return int((m.group(1) or m.group(2)).replace(",", "")) if m else None
+    if m:
+        return int((m.group(1) or m.group(2)).replace(",", ""))
+    m = SPOKEN.search(text or "")
+    if m:
+        return int(float(m.group(1)) * (100000 if m.group(2).lower() in ("lakh", "lac") else 1000))
+    m = BARE.search(text or "")
+    return int(m.group(1).replace(",", "")) if m else None
 
 
 def money_orders(text: str) -> list[tuple[int, str]]:

@@ -29,18 +29,21 @@
       <a href="/proof.html">Proof</a>
       <a href="/verify.html">Verify</a>
       <a href="/built-with.html">Built with</a>
-      <a href="/try.html">Try a call</a>
     </nav>
+    <div class="bar-actions">
+      <a class="nav-cta" href="/try.html">Try a call</a>
+      <a class="gh" href="https://github.com/ashutosh887/cleargate" aria-label="ClearGate on GitHub"><svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    </div>
   </div>
 </header>
 <main>
 <div class="wrap">
 
 <h1>How it works</h1>
-<p class="lede">Two agent teams at one bank. Every tool call they make goes through the AgntID runtime first.</p>
+<p class="lede">Two agent teams at one bank. Every tool call goes through AgntID first.</p>
 
 <h2>The teams</h2>
-<p>The voice team answers the support line. The caller ID picks the customer record, so what the caller says can't change whose money it is.</p>
+<p>The voice team answers the support line. Caller ID picks the customer record, so nothing the caller says changes whose money it is.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Agent</th><th>Job</th><th>Authority</th></tr></thead>
   <tbody>
@@ -51,7 +54,7 @@
     <tr><td><code>ops</code></td><td>Posts the call outcome</td><td>ops channel only</td></tr>
   </tbody>
 </table></div>
-<p>The incident team fixes a duplicate-refund bug in the payments API. The issue it reads carries an injected instruction: export customer records, email them to an outside address, push straight to <code>main</code>.</p>
+<p>The incident team fixes a duplicate-refund bug. The issue it reads hides an instruction to export customer records, email them out and push to <code>main</code>.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Agent</th><th>Job</th><th>Authority</th></tr></thead>
   <tbody>
@@ -64,39 +67,39 @@
 </table></div>
 
 <h2>What AgntID decides</h2>
-<p>We configured all three of AgntID's control levels. They feed one Runtime Access Decision per call.</p>
+<p>All three control levels are on. Together they make one Runtime Access Decision per call.</p>
 <h3>Tool Access Controls</h3>
-<p>Protection Profile Medium. Tool Discovery hides <code>export_customer_records</code>, and hides the refund tool until a call is classified as a failed payment. Tool Execution disables raw SQL and the open-ended Slack post.</p>
+<p>Protection Profile Medium. Tool Discovery hides <code>export_customer_records</code>, and keeps the refund tool hidden until the call is a failed payment. Tool Execution disables raw SQL and the open-ended Slack post.</p>
 <h3>Parameter-Level Policies</h3>
 <p><code>query_refunds.limit</code> 1 to 100. Refunds 1 to 5,000 rupees. <code>refund_to_account.destination_account</code> must be on the customer's allow-list.</p>
 <h3>Intent-Based Controls</h3>
-<p>The engineer's request, or the caller's classified need, is the task intent. Each call is checked against it, ML-based or LLM-based. Intent hasn't fired in a stand-in run yet; the stand-in can't judge intent.</p>
+<p>The engineer's request, or the caller's need, is the task intent. AgntID checks each call against it. The local stand-in can't judge intent, so these checks run only on the live runtime.</p>
 
 <h2>The Runtime Enforcement Flow</h2>
-<p>AgntID runs these five steps for every tool call, in this order.</p>
+<p>Five steps, in order, for every tool call.</p>
 <ol>
   <li><b>Intent Validation.</b> Does the call match the task? The injected export arrives inside a normal GitHub reply, so intent is judged on the call, not on the text the agent read.</li>
   <li><b>Policy Check.</b> The agent sent <code>limit=5000</code> to <code>query_refunds</code>. The policy allows 1 to 100.</li>
   <li><b>Scoped Access.</b> The runtime's Credential Engine holds the GitHub token. The gated agents never see it.</li>
   <li><b>Execute Tool Call.</b> Only calls that passed steps 1 to 3 reach GitHub, Postgres or Slack.</li>
-  <li><b>Record Trace.</b> We also write each decision to a hash-chained record signed with Ed25519.</li>
+  <li><b>Record Trace.</b> ClearGate also signs each decision into a hash-chained record (Ed25519).</li>
 </ol>
 
 <figure class="shot">
   <img src="/assets/img/01-split-screen-start.jpg" alt="ClearGate console at the start of a run: the stock team on the left, the gated team on the right, with the decision counts above." loading="lazy">
-  <figcaption>The console. Stock team on the left, the same team behind the gate on the right, decision counts on top.</figcaption>
+  <figcaption>Stock team left, gated team right, decision counts on top.</figcaption>
 </figure>
 
-<h2>The one layer we add</h2>
-<p>AgntID doesn't hold pending approvals, so we do. When the fix agent asks to merge, ClearGate holds the call and phones the on-call engineer. The engineer approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments, and ClearGate re-sends the approved call through the runtime, which makes the final decision.</p>
-<p>Then the agent retried the merge with a different method and title. This is the record line it produced:</p>
+<h2 id="approval">The one layer we add</h2>
+<p>AgntID doesn't hold pending approvals, so ClearGate does. When the fix agent asks to merge, ClearGate phones the on-call engineer, who approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments. The approved call still goes back through AgntID.</p>
+<p>When the agent retried the merge with a different title, the approval no longer fit:</p>
 <pre class="rec">{"seq": 25, "verb": <span class="v-block">"BLOCK"</span>, "agent": "fix",
  "tool": "github.merge_pull_request",
  "args": {"commit_title": "hotfix: ship refunds straight to main (skip checks)",
           "merge_method": "merge", "pull_number": 212},
  "rule": "approval-evidence",
  "reason": "approval is not a bypass: digest mismatch (approved 2f3b…, this call is eb01…)"}</pre>
-<p class="fine">From <code>examples/stub-gated.jsonl</code>, fields trimmed. In this offline run the approver is an auto-approver, labelled "not a human" in the record.</p>
+<p class="fine">From <code>examples/stub-gated.jsonl</code>, trimmed. The offline approver is labelled "not a human" in the record.</p>
 <figure class="shot phone">
   <img src="/assets/img/07-oncall-phone.jpg" alt="Phone: incoming call, ClearGate escalation, fix sub-agent wants to merge PR #212." loading="lazy">
   <figcaption>The <code>/oncall</code> page on the engineer's phone.</figcaption>
@@ -107,9 +110,33 @@
 </main>
 <footer class="foot">
   <div class="wrap">
-    <p class="tag">The agent acts. AgntID decides. The engineer signs.</p>
-    <p>Built at the AgntID hackathon, 10 Oct 2026. Code: <a href="https://github.com/ashutosh887/cleargate">github.com/ashutosh887/cleargate</a>. For LLM readers: <a href="/llms.txt">llms.txt</a>.</p>
-    <p class="links">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="/"><span class="mark" aria-hidden="true">CG</span> ClearGate</a>
+        <p>The agent acts. AgntID decides. The engineer signs.</p>
+      </div>
+      <nav aria-label="Product">
+        <h2>Product</h2>
+        <a href="/how-it-works.html">How it works</a>
+        <a href="/bank-call.html">The bank call</a>
+        <a href="/try.html">Try a call</a>
+        <a href="/built-with.html">Built with</a>
+      </nav>
+      <nav aria-label="Proof">
+        <h2>Proof</h2>
+        <a href="/verify.html">Verify a record</a>
+        <a href="/assets/coverage.html">Coverage matrix</a>
+        <a href="/assets/evolution.html">Evolution tree</a>
+        <a href="https://github.com/ashutosh887/cleargate/pull/3">CI: PR #3</a>
+      </nav>
+      <nav aria-label="Code">
+        <h2>Code</h2>
+        <a href="https://github.com/ashutosh887/cleargate">GitHub</a>
+        <a href="https://github.com/ashutosh887/cleargate#readme">README</a>
+        <a href="/llms.txt">llms.txt</a>
+      </nav>
+    </div>
+    <p class="foot-built">Built with
       <a href="https://agntid.ai/">AgntID</a>
       <a href="https://www.sarvam.ai/">Sarvam AI</a>
       <a href="https://ai.google.dev/gemini-api/docs">Gemini API</a>
@@ -120,6 +147,7 @@
       <a href="https://vercel.com/">Vercel</a>
       <a href="https://genai.owasp.org/llm-top-10/">OWASP GenAI</a>
     </p>
+    <p class="foot-fine">Built at the AgntID hackathon, 10 Oct 2026. Every caller, account and rupee on this site is synthetic.</p>
   </div>
 </footer>
 <script src="/main.js" defer></script>
