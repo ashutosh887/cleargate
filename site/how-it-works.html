@@ -123,7 +123,7 @@
 </table></div>
 
 <h2 id="approval">The one enforcement layer we add</h2>
-<p>AgntID doesn't hold pending approvals, so ClearGate does. When the fix agent asks to merge, ClearGate phones the on-call engineer, who approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments, and the approved call still goes back through AgntID.</p>
+<p>AgntID doesn't hold pending approvals, so ClearGate does. When the fix agent asks to merge, ClearGate pages the on-call engineer on the phone page (/oncall), who approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments, and the approved call still goes back through AgntID.</p>
 <p>When the agent retried the merge with a different title, the approval no longer fit:</p>
 <pre class="rec">{"seq": 25, "verb": <span class="v-block">"BLOCK"</span>, "agent": "fix",
  "tool": "github.merge_pull_request",
