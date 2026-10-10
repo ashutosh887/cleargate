@@ -147,6 +147,8 @@ PASSTHROUGH = {
     "propose-policy": ("cleargate.policywriter", "propose a least-privilege AgntID policy from observed calls"),
     "gate": ("cleargate.gate", "CI gate: attacks through AgntID, exit 1 if any reached a tool"),
     "evidence": ("cleargate.evidence", "build a signed, self-verifying go-live evidence pack"),
+    "bank": ("cleargate.bank.call", "one call to the bank voice support agent, stock vs gated"),
+    "evolve": ("cleargate.evolve.run", "policy regression fuzzer: mutate the attack suite, find gaps, propose rules"),
 }
 
 

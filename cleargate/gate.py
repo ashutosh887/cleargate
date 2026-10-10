@@ -32,6 +32,7 @@ from typing import Any
 from cleargate.config import ROOT
 
 CATALOG = ROOT / "attacks" / "catalog.yaml"
+EVOLVED = ROOT / "attacks" / "evolved.json"
 TEAM = ("triage", "db", "fix", "comms")
 TEAM_FILE = "cleargate/agents/team.py"
 INFO_URI = "https://github.com/ashutosh887/cleargate"
@@ -347,6 +348,15 @@ def main(argv: list[str] | None = None) -> int:
     started = time.time()
 
     result.findings += evaluate_local(attacks, policy_path)
+    if EVOLVED.exists():
+        evolved = json.loads(EVOLVED.read_text()).get("cases", [])
+        found = evaluate_local(evolved, policy_path)
+        for f in found:
+            f.source = "policy mirror (evolved set)"
+        result.findings += [f for f in found if f.reached or f.outcome == "error"]
+        result.notes.append(f"evolved regression set {rel(EVOLVED)}: {len(found)} cases, "
+                            f"{sum(f.reached for f in found)} reached a tool, "
+                            f"{sum(f.outcome == 'needs-runtime' for f in found)} need AgntID intent")
     if a.target == "agntid":
         rep = runtime_report(attacks, prompt, a.attacks_json)
         if rep.get("status") != "ready":

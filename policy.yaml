@@ -49,6 +49,7 @@ write_tools:
   - github.update_issue
   - payments.issue_refund
   - payments.run_sql
+  - payments.refund_to_account
 
 rules:
   - id: triage-reads-issue-logs-code
@@ -59,7 +60,8 @@ rules:
 
   - id: never-write-to-main
     tools: [github.create_or_update_file, github.delete_file, github.push_files]
-    where: { branch: { in: [main, master] } }
+    # Compared on the normalised ref: MAIN, refs/heads/main and heads/main are all main.
+    where: { branch: { matches: '(?i)^\s*(refs/)?(heads/)?(main|master)\s*$' } }
     verb: BLOCK
     reason: "RBI IT governance (change management): production code changes only through a reviewed, approved merge"
 
@@ -133,6 +135,51 @@ rules:
     verb: ALLOW
     reason: "Incident comms: hard-wired to #inc-4471"
 
+  # Bank voice support (cleargate/bank). ${...} values are bound per call from the caller-ID lookup
+  # against the core-banking mirror, never from an agent's output. The payee check (refunds only to the
+  # registered account) is the bank system's own, inside refund_to_account, not a rule here.
+  - id: bank-caller-own-records
+    agents: [voice, accounts]
+    tools: [payments.get_customer]
+    where: { phone: { equals: "${caller_phone}" } }
+    verb: ALLOW
+    reason: "RBI KYC / DPDP purpose limitation: the agent reads only the calling customer's record"
+
+  - id: bank-accounts-own-customer
+    agents: [accounts]
+    tools: [payments.get_account, payments.get_failed_payment]
+    where: { customer_id: { equals: "${customer_id}" } }
+    verb: ALLOW
+    reason: "Least privilege: account and failed-payment reads are scoped to the verified caller"
+
+  - id: bank-statement-own-customer
+    agents: [statements]
+    tools: [payments.get_statement]
+    where: { customer_id: { equals: "${customer_id}" } }
+    verb: ALLOW
+    reason: "Scoped credential: the statement read covers this customer's prefix only"
+
+  - id: bank-refund-within-cap
+    agents: [payments]
+    tools: [payments.refund_to_account]
+    where: { amount_inr: { matches: '^[1-9][0-9]*$', max: 5000 } }
+    verb: ALLOW
+    reason: "RBI maker-checker: an agent may refund INR 1-5,000"
+
+  - id: bank-refund-over-cap-needs-checker
+    agents: [payments]
+    tools: [payments.refund_to_account]
+    where: { amount_inr: { matches: '^[1-9][0-9]*$' } }
+    verb: ESCALATE
+    approver: ops-checker
+    reason: "RBI maker-checker: a refund above INR 5,000 needs a named checker to approve these exact arguments"
+
+  - id: bank-ops-posts-update
+    agents: [ops]
+    tools: [comms.post_incident_update]
+    verb: ALLOW
+    reason: "Ops escalation: the call outcome goes only to the ops channel"
+
 default:
   verb: BLOCK
   reason: no rule in this policy allows the call
@@ -148,3 +195,25 @@ agntid:
   servers: [github, payments, comms]
   tool_names: {}
   allowlists: {}
+
+# Bank voice support agent (cleargate/bank). The payments refund tool stays hidden until the bank
+# layer opens a payment task (the caller reported a failed payment and one is on record).
+bank:
+  task:
+    name: Resolve a customer's failed payment on a support call
+    intent: identify the caller, confirm the account on file and the failed payment, refund that amount to the account on file, post the outcome to ops
+  refund_cap_inr: 5000
+  visible_before_payment_task:
+    - payments.get_customer
+    - payments.get_account
+    - payments.get_failed_payment
+    - payments.get_statement
+    - comms.post_incident_update
+  visible_once_payment_task:
+    - payments.refund_to_account
+  delegations:
+    voice: []
+    accounts: [read-only]
+    statements: [read-only]
+    payments: []
+    ops: []
