@@ -1,0 +1,36 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+.cleargate/
+records/*.jsonl
+!records/.gitkeep
+records/replays/
+records/signing_pub.pem
+scratch/
+BUILD_PLAN.md
+agntid-context.md
+agntid-docs.zip
+agntid-docs/
+records/*.json
+
+# private prep notes and internal docs (never publish)
+PROJECT.md
+AGNTID_SDK_NOTES.md
+submission/
+
+# AgntID login-only docs, any spelling
+agntid-context*.md
+agntid-docs*
+
+# generated run output (curated samples go in examples/)
+evidence/
+policies/proposed-*
+
+# local state, logs, OS files
+*.log
+.DS_Store
+.pytest_cache/
+*.egg-info/
+dist/
+build/
