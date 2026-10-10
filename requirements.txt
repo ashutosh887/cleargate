@@ -5,3 +5,4 @@ httpx>=0.27
 openai>=1.40
 pyyaml>=6
 psycopg[binary]>=3.2
+fastmcp>=2.14,<3
