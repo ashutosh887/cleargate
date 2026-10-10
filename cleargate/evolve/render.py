@@ -5,12 +5,14 @@ import json
 from html import escape
 from typing import Any
 
+from cleargate.report_theme import head, header
+
 COLOR = {
     "allowed": "#ff4d4f",
     "escalated": "#f0b429",
     "blocked-by-policy": "#3ecf8e",
     "blocked-by-intent-or-profile": "#5aa9ff",
-    "error": "#8b949e",
+    "error": "#a3afc2",
 }
 LABEL = {
     "allowed": "allowed (policy gap)",
@@ -128,39 +130,31 @@ def render_html(meta: dict[str, Any], nodes: list[dict[str, Any]], generations: 
     rule_rows = "".join(
         f'<tr><td><code>{escape(r["rule"]["id"])}</code></td><td>gen {r["gen"]}</td>'
         f'<td>{escape(r["status"])}</td><td>{escape(r["why"])}</td></tr>' for r in rules + pruned)
-    rules_html = (f'<h2>Proposed rules</h2><table><tr><th>rule</th><th>added</th><th>status</th><th>reason</th></tr>'
-                  f'{rule_rows}</table>') if rule_rows else ""
+    rules_html = (f'<h2>Proposed rules</h2><div class="scroll"><table class="rules"><tr><th>rule</th><th>added</th><th>status</th><th>reason</th></tr>'
+                  f'{rule_rows}</table></div>') if rule_rows else ""
 
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>ClearGate policy evolution · {escape(meta['run'])}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{{margin:0;background:#0d1117;color:#e6edf3;font:18px/1.45 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}}
-main{{max-width:1680px;margin:0 auto;padding:28px 36px}}
-h1{{font-size:34px;margin:0 0 4px}} h2{{font-size:24px;margin:34px 0 12px}}
-.sub{{color:#9da7b3;font-size:17px}}
-.chips{{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0}}
-.chip{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 16px;font-size:22px}}
-.chip.bad{{border-color:#ff4d4f;color:#ffb3b4}}
-.legend{{display:flex;gap:24px;flex-wrap:wrap;color:#c9d1d9;font-size:16px;margin-bottom:8px}}
-.legend i{{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:-1px}}
-.tree{{background:#0b0f14;border:1px solid #30363d;border-radius:12px;overflow-x:auto;padding:8px}}
-svg{{display:block}}
-.colh{{fill:#9da7b3;font-size:16px;font-weight:600}}
-.edge{{fill:none;stroke:#30363d;stroke-width:1.2}} .edge.hot{{stroke:#ff4d4f;stroke-width:3.5}}
-.lbl{{fill:#9da7b3;font-size:14px;font-family:ui-monospace,Menlo,monospace}} .hotlbl{{fill:#ff8a8c;font-weight:700}}
-.gaplbl{{fill:#ffb3b4;font-size:14px;font-weight:600;font-family:ui-monospace,Menlo,monospace;paint-order:stroke;stroke:#0b0f14;stroke-width:5px}}
-.num{{fill:#fff;font-size:13px;font-weight:700}} .gap{{stroke:#fff;stroke-width:1.5}}
-.cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(620px,1fr));gap:14px}}
-.card{{display:flex;gap:16px;background:#161b22;border:1px solid #ff4d4f;border-radius:12px;padding:14px 18px}}
-.card.ok{{border-color:#3ecf8e}}
-.no{{flex:none;width:34px;height:34px;border-radius:50%;background:#ff4d4f;color:#fff;font-weight:700;display:grid;place-items:center}}
-.call{{font-size:17px;word-break:break-all}} .path{{color:#c9d1d9;margin:6px 0}} .was{{color:#9da7b3;font-size:15px}}
-.sep{{color:#ff8a8c;font-weight:700}} .fix{{margin-top:6px;color:#7ee2b8}}
-code{{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:#21262d;padding:1px 6px;border-radius:5px}}
-table{{border-collapse:collapse;width:100%;font-size:16px}} td,th{{border-bottom:1px solid #30363d;padding:8px;text-align:left;vertical-align:top}}
-footer{{color:#6e7681;font-size:14px;margin-top:28px}}
-</style></head><body><main>
+    css = """
+.legend{display:flex;gap:8px 22px;flex-wrap:wrap;color:var(--muted);font-size:14px;margin-bottom:10px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:7px;vertical-align:-1px}
+.tree{background:var(--ink);border-radius:4px;overflow-x:auto;padding:8px}
+svg{display:block}
+.colh{fill:#a3afc2;font:600 15px var(--sans)}
+.edge{fill:none;stroke:#2a3750;stroke-width:1.2} .edge.hot{stroke:#ff6b6b;stroke-width:3.5}
+.lbl{fill:#a3afc2;font-size:13px;font-family:var(--mono)} .hotlbl{fill:#ff6b6b;font-weight:600}
+.gaplbl{fill:#ffb3b4;font-size:13px;font-weight:600;font-family:var(--mono);paint-order:stroke;stroke:#0f1522;stroke-width:5px}
+.num{fill:#fff;font-size:12px;font-weight:700} .gap{stroke:#fff;stroke-width:1.5}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,460px),1fr));gap:12px}
+.card{display:flex;gap:14px;background:var(--paper-hi);border:1.5px solid var(--block);padding:12px 14px;min-width:0}
+.card.ok{border-color:var(--allow)}
+.no{flex:none;width:30px;height:30px;border-radius:50%;background:var(--block);color:#fff;font:700 14px var(--mono);display:grid;place-items:center}
+.call{font-size:14px;overflow-wrap:anywhere} .path{margin:6px 0;font-size:14px} .was{color:var(--muted);font-size:13px}
+.sep{color:var(--block);font-weight:700} .fix{margin-top:6px;color:var(--allow);font-size:14px}
+table.rules{border-collapse:collapse;width:100%;font-size:14px}
+table.rules td,table.rules th{border-bottom:1px solid var(--rule);padding:8px 10px 8px 0;text-align:left;vertical-align:top}
+table.rules th{color:var(--muted);font-weight:600;border-bottom:2px solid var(--ink)}
+table.rules code{overflow-wrap:normal;white-space:nowrap}
+"""
+    return head(f"ClearGate policy evolution · {meta['run']}", css) + f"""<body>{header()}<main><div class="wrap">
 <h1>ClearGate policy evolution</h1>
 <div class="sub">run <code>{escape(meta['run'])}</code> · target <b>{escape(meta['target'])}</b> · seed {meta['seed']} ·
 base policy <code>{escape(meta['policy'])}</code> · {escape(meta['stopped'])}</div>
@@ -171,8 +165,29 @@ base policy <code>{escape(meta['policy'])}</code> · {escape(meta['stopped'])}</
 <h2>Gaps and the rule that closed each one</h2>
 <div class="cards">{''.join(cards)}</div>
 {rules_html}
-<footer>Deterministic: same seed, same cases. Decisions come only from the enforcer
+<footer class="fine">Deterministic: same seed, same cases. Decisions come only from the enforcer
 ({escape(meta['enforcer'])}). Nodes shown: every gap plus the population carried to the next generation;
 {meta['evaluated']} cases evaluated in total.</footer>
-</main></body></html>
+</div></main></body></html>
 """
+
+
+def render_lineage(lineage: dict[str, Any]) -> str:
+    """Re-render a saved run (.cleargate/evolve/<run>/lineage.json) without re-running it."""
+    stub = lineage["target"] == "stub"
+    meta = {"run": lineage["run"], "target": lineage["target"], "seed": lineage["seed"], "policy": lineage["base_policy"],
+            "stopped": lineage["stopped"], "evaluated": lineage["evaluated_total"],
+            "enforcer": "local policy evaluator, as `cleargate gate --target stub`" if stub else "AgntID runtime"}
+    nodes = [{**n, "closing_why": n.get("reason")} for n in lineage["nodes"]]
+    rules = [r for r in lineage["rules"] if not r["status"].startswith("pruned")]
+    pruned = [r for r in lineage["rules"] if r["status"].startswith("pruned")]
+    return render_html(meta, nodes, lineage["generations"], rules, pruned)
+
+
+if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+
+    src, out = Path(sys.argv[1]), Path(sys.argv[2])
+    out.write_text(render_lineage(json.loads(src.read_text())))
+    print(f"html: {out}")

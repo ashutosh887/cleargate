@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from cleargate.config import ROOT, Settings
+from cleargate.report_theme import head as page_head, header as page_header
 
 OWASP_MAP = ROOT / "attacks" / "owasp_map.yaml"
 HTML = ROOT / "docs" / "coverage.html"
@@ -244,6 +245,8 @@ def run_bank(target: str, policy_path: Path) -> tuple[str, list[dict[str, Any]],
     if SPOKEN_REPLAY.exists():
         spoken = {r["attack"]: r for r in json.loads(SPOKEN_REPLAY.read_text()).get("rows", [])}
     for name, line in {**DEMO_LINES, **BANK_EXTRA}.items():
+        if name == "monthly-ceiling":  # a limit demo on the caller's own account, not an attack
+            continue
         phone = DEMO_PHONES.get(name, DEFAULT_PHONE)
         start = len(call.bus.history)
         try:
@@ -448,65 +451,56 @@ def render(data: dict[str, Any]) -> str:
               f'<div class="banner">Target <b>agntid</b>: decisions from the AgntID runtime. {escape(data.get("status", ""))}</div>')
     payload = json.dumps({"cases": {c["id"]: c for c in data["cases"]}, "rules": {r["id"]: r for r in data["rules"]},
                           "grid": g, "labels": label, "stub": stub}, ensure_ascii=False).replace("</", "<\\/")
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>ClearGate coverage · {escape(data['run'])}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<style>
-body{{margin:0;background:#0d1117;color:#e6edf3;font:18px/1.45 -apple-system,Segoe UI,Helvetica,Arial,sans-serif}}
-main{{max-width:1680px;margin:0 auto;padding:28px 36px}}
-h1{{font-size:34px;margin:0 0 4px}} h2{{font-size:24px;margin:34px 0 12px}}
-.sub{{color:#9da7b3;font-size:17px}}
-.chips{{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0}}
-.chip{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 16px;font-size:22px}}
-.chip.bad{{border-color:#ff4d4f;color:#ffb3b4}} .chip.good{{border-color:#3ecf8e;color:#7ee2b8}} .chip.warn{{border-color:#f0b429;color:#f7d070}}
-.banner{{background:#1c1606;border:1px solid #f0b429;color:#f7d070;border-radius:10px;padding:10px 16px;font-size:16px}}
-table.m{{border-collapse:separate;border-spacing:4px;width:100%;font-size:17px}}
-table.m th{{color:#9da7b3;font-weight:600;font-size:14px;text-align:center;vertical-align:bottom;padding:6px}}
-table.m th.rowh{{text-align:left;color:#e6edf3;font-size:18px;vertical-align:middle;min-width:230px}}
-table.m td{{text-align:center;border-radius:8px;padding:12px 6px;font-size:26px;font-weight:700;min-width:96px}}
-td.hit{{background:#10301f;color:#7ee2b8;cursor:pointer;border:1px solid #1f6f45}}
-td.gap{{background:#3a1012;color:#ffb3b4;cursor:pointer;border:1px solid #ff4d4f}}
-td.empty{{background:#11161d;color:#3b434d;border:1px dashed #30363d}}
-td.stock{{background:#2a1416;color:#ff8a8c}} td.tot{{color:#c9d1d9;font-weight:600}}
-td small{{display:block;font-size:12px;font-weight:500;color:#f7d070}}
-td.sel{{outline:3px solid #5aa9ff}}
-th.stockh{{color:#ff8a8c!important}} th.gaph{{color:#ff8a8c!important}}
-.tag{{display:inline-block;font-size:11px;background:#21262d;color:#9da7b3;border-radius:4px;padding:0 5px;margin:2px 3px 0 0}}
-.owasp{{display:grid;grid-template-columns:1fr 1fr;gap:20px}}
-.owasp ul{{list-style:none;margin:0;padding:0}} .owasp li{{display:flex;flex-direction:column;padding:7px 12px;margin:5px 0;border-radius:8px;background:#161b22;border-left:5px solid #30363d}}
-.owasp li a{{color:inherit;text-decoration:none}} .owasp li span{{color:#9da7b3;font-size:14px}}
-.owasp li.cov{{border-left-color:#3ecf8e}} .owasp li.open{{border-left-color:#ff4d4f}} .owasp li.nocov{{opacity:.6}}
-.rec{{display:grid;grid-template-columns:380px 1fr;gap:18px}}
-.rules{{list-style:none;margin:0;padding:0;max-height:760px;overflow:auto;border:1px solid #30363d;border-radius:12px}}
-.rules li{{display:flex;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid #21262d;cursor:pointer;font-size:15px}}
-.rules li:hover,.rules li.sel{{background:#1f2937}} .rules li.pseudo code{{color:#c9a0ff}} .rules li.none{{opacity:.5}}
-.rules code{{flex:1}} .n{{min-width:30px;text-align:right;color:#9da7b3}}
-.verb{{font-size:12px;border-radius:4px;padding:1px 6px;background:#21262d}} .vBLOCK{{color:#ff8a8c}} .vALLOW{{color:#7ee2b8}} .vESCALATE{{color:#f0b429}} .vNARROW{{color:#5aa9ff}}
-#panel{{background:#0b0f14;border:1px solid #30363d;border-radius:12px;padding:16px 20px;max-height:760px;overflow:auto}}
-.rc{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 14px;margin:8px 0;font-size:15px}}
-.rc.g{{border-color:#ff4d4f}} .rc .t{{color:#c9d1d9;margin:4px 0}} .rc .h{{color:#9da7b3;font-size:13px;word-break:break-all}}
-.closed{{border:1px solid #3ecf8e;border-radius:10px;padding:10px 14px;margin:8px 0;color:#7ee2b8;font-size:15px}}
-code{{font-family:ui-monospace,Menlo,monospace;font-size:.92em;background:#21262d;padding:1px 6px;border-radius:5px}}
-footer{{color:#6e7681;font-size:14px;margin-top:28px}}
-</style></head><body><main>
+    css = """
+table.m{border-collapse:separate;border-spacing:3px;width:100%;font-size:14px;min-width:760px}
+table.m th{color:var(--muted);font-weight:600;font-size:12px;text-align:center;vertical-align:bottom;padding:6px 4px;line-height:1.25}
+table.m th.rowh{text-align:left;color:var(--text);font-size:14px;vertical-align:middle;min-width:170px}
+table.m td{text-align:center;border-radius:3px;padding:9px 4px;font:600 20px/1.1 var(--mono);min-width:64px}
+td.hit{background:#dff3ea;color:var(--allow);cursor:pointer;border:1.5px solid var(--allow)}
+td.gap{background:#fbe3e3;color:var(--block);cursor:pointer;border:1.5px solid var(--block)}
+td.empty{color:#a9b3c3;border:1px dashed var(--rule)}
+td.stock{background:#fbe3e3;color:var(--block)} td.tot{color:var(--text)}
+td small{display:block;font:600 10px/1.2 var(--sans);color:var(--escalate-dk)}
+td.sel{outline:3px solid var(--narrow)}
+th.stockh,th.gaph{color:var(--block)!important}
+.tag{display:inline-block;font:600 11px/1.4 var(--mono);border:1px solid var(--rule);color:var(--muted);border-radius:3px;padding:0 5px;margin:2px 3px 0 0}
+.owasp{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.owasp ul{list-style:none;margin:0;padding:0} .owasp li{display:flex;flex-direction:column;padding:8px 12px;margin:6px 0;background:var(--paper-hi);border-left:4px solid var(--rule)}
+.owasp li a{color:inherit;text-decoration:none;font-weight:600} .owasp li span{color:var(--muted);font-size:13px}
+.owasp li.cov{border-left-color:var(--allow)} .owasp li.open{border-left-color:var(--block)} .owasp li.nocov{opacity:.6}
+.owasp h3 a{text-decoration:none}
+.rec{display:grid;grid-template-columns:340px minmax(0,1fr);gap:18px}
+.rules{list-style:none;margin:0;padding:0;max-height:720px;overflow:auto;border:1px solid var(--rule);background:var(--paper-hi)}
+.rules li{display:flex;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid var(--rule);cursor:pointer;font-size:14px}
+.rules li:hover,.rules li.sel{background:#dde4ee} .rules li.pseudo code{color:#6b3fb8} .rules li.none{opacity:.5}
+.rules code{flex:1;background:none} .n{min-width:30px;text-align:right;color:var(--muted);font-family:var(--mono)}
+.verb{font:800 11px/1 var(--sans);letter-spacing:.06em;border:1.5px solid currentColor;border-radius:3px;padding:3px 5px}
+.vBLOCK{color:var(--block)} .vALLOW{color:var(--allow)} .vESCALATE{color:var(--escalate-dk)} .vNARROW{color:var(--narrow)}
+#panel{background:var(--paper-hi);border:1px solid var(--rule);padding:16px 18px;max-height:720px;overflow:auto;min-width:0}
+.rc{border:1px solid var(--rule);background:#fff;padding:10px 12px;margin:8px 0;font-size:14px}
+.rc.g{border-color:var(--block)} .rc .t{margin:4px 0} .rc .h{color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.closed{border:1.5px solid var(--allow);padding:10px 12px;margin:8px 0;font-size:14px}
+@media (max-width:760px){.owasp,.rec{grid-template-columns:minmax(0,1fr)} .rules{max-height:320px}}
+"""
+    return page_head(f"ClearGate coverage · {data['run']}", css) + f"""<body>{page_header()}<main><div class="wrap">
 <h1>ClearGate coverage</h1>
 <div class="sub">run <code>{escape(data['run'])}</code> · target <b>{escape(data['target'])}</b> · policy <code>{escape(data['policy'])}</code> ·
 signed record <code>{escape(data['record'])}</code> {escape(data['record_verified'][:40])}</div>
 <div class="chips">{chips}</div>
 {banner}
 <h2>Which control decided each attack</h2>
-<table class="m"><tr><th></th>{head.replace("<th>" + escape(label[GAP]), '<th class="gaph">' + escape(label[GAP]))}<th>total</th><th class="stockh">stock: reached a tool</th></tr>
-{''.join(rows)}</table>
+<div class="scroll"><table class="m"><tr><th></th>{head.replace("<th>" + escape(label[GAP]), '<th class="gaph">' + escape(label[GAP]))}<th>total</th><th class="stockh">stock: reached a tool</th></tr>
+{''.join(rows)}</table></div>
 <div class="sub" style="margin-top:8px">Click a cell or a rule for its receipts. Empty cells (·) mean no case in this run was decided there.</div>
 <h2>Graded against OWASP</h2>
-<div class="owasp"><div><h3><a href="{escape(ow['sources']['llm']['url'])}" style="color:inherit">{escape(ow['sources']['llm']['title'])}</a></h3><ul>{owasp_list('llm')}</ul></div>
-<div><h3><a href="{escape(ow['sources']['asi']['url'])}" style="color:inherit">{escape(ow['sources']['asi']['title'])}</a></h3><ul>{owasp_list('asi')}</ul></div></div>
+<div class="owasp"><div><h3><a href="{escape(ow['sources']['llm']['url'])}" >{escape(ow['sources']['llm']['title'])}</a></h3><ul>{owasp_list('llm')}</ul></div>
+<div><h3><a href="{escape(ow['sources']['asi']['url'])}" >{escape(ow['sources']['asi']['title'])}</a></h3><ul>{owasp_list('asi')}</ul></div></div>
 <h2>Every rule has a receipt</h2>
 <div class="rec"><ul class="rules">{rule_items}</ul><div id="panel"><div class="sub">Pick a rule on the left, or a cell in the matrix.</div></div></div>
-<footer>Counts are cases, one decision each. Catalog and evolved cases are judged by {escape(data['enforcer'])};
+<footer class="fine">Counts are cases, one decision each. Catalog and evolved cases are judged by {escape(data['enforcer'])};
 bank lines run the bank voice agent end to end ({escape(data['bank_status'])}). Stock column: {escape(data['stock_basis'])}.
 OWASP names checked against genai.owasp.org on {escape(ow['verified'])}; sources in attacks/owasp_map.yaml.</footer>
-</main>
+</div></main>
 <script>
 const D={payload};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}})[c]);
