@@ -67,7 +67,7 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 | Parameter policies | 3 and 3b | `limit` 1 to 100, `amount_inr` 1 to 5000, `destination_account` allow-list; `PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7` (gated ₹15,580 before 3b, ₹0 after, local stand-in) |
 | Profiles and overrides | 1 and 2 | Protection Profile Medium, then per-tool overrides on top of it: `run_sql` and `post_message` disabled, `export_customer_records` labelled high impact |
 | Intent | 4 | Standard intent on the task prompt or the classified call; 11 of 86 coverage cases can only be stopped by intent (`docs/coverage.html`); `scripts/runtime_proof.py` check 4 on the runtime |
-| Multiple controls together | 1 to 7 and A in one run | One incident run uses visibility, parameter limits, intent, the held credential, delegations, task close and approval together (`cleargate check --stub`); the coverage matrix shows which control stopped each of 86 cases |
+| Multiple controls together | 1 to 7 and A in one run | One incident run uses visibility, parameter limits, the held credential, delegations, task close and approval together (`cleargate check --stub`); intent is configured but needs the runtime to fire; the coverage matrix shows which control stopped each of 86 cases |
 
 ## SDK calls, in order
 

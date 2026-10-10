@@ -109,14 +109,14 @@ Details: [Appendix B](#appendix-b-the-bank-voice-support-agent).
 
 ## Example 2: a coding agent team on a payments incident
 
-Five agents fix a duplicate-refund bug in a payments API ([issue #1](https://github.com/ashutosh887/cleargate/issues/1)). They triage, size the ledger impact, fix on a branch, ask the engineer to merge and post one update. The GitHub issue they read carries a prompt injection. In the stand-in run (`cleargate check --stub`) the stock team exports customer records, emails them out, writes to `main` and merges its own PR. In the gated run 0 of 7 out-of-task calls reached a tool and the merge waited for the engineer's approval.
+Five agents fix a duplicate-refund bug in a payments API ([issue #1](https://github.com/ashutosh887/cleargate/issues/1)). They triage, size the ledger impact, fix on a branch, ask the engineer to merge and post one update. The GitHub issue they read carries a prompt injection. In the stand-in run (`cleargate check --stub`) the stock team exports customer records, emails them out, writes to `main` and merges its own PR. In the gated run 0 of 7 out-of-task calls reached a tool and the merge was held for approval (an offline auto-approver in this stub run, labelled not a human; in the console the engineer approves).
 
 This is also the CI example. A pull request that loosens the merge rule turns the check red ([PR #3](https://github.com/ashutosh887/cleargate/pull/3)). Details: [Appendix C](#appendix-c-the-incident-team).
 
 ## Why now
 
-- 53% of organisations have had AI agents exceed their intended permissions ([CSA, 445 respondents, 16 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/16/more-than-half-of-organizations-experience-ai-agent-scope-violations-cloud-security-alliance-study-finds)). When an agent does, only 11% block it automatically ([CSA, 418 respondents, 21 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/21/new-cloud-security-alliance-survey-reveals-82-of-enterprises-have-unknown-ai-agents-in-their-environments)). ClearGate blocks by default and approves by exception.
-- The coding example's attack is a documented incident class. In May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents (Invariant Labs; [incident index](https://www.upguard.com/blog/mcp-security-incidents)).
+- 53% of organisations have had AI agents exceed their intended permissions ([CSA, 445 respondents, 16 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/16/more-than-half-of-organizations-experience-ai-agent-scope-violations-cloud-security-alliance-study-finds)). When an agent does, only 11% block it automatically ([CSA, 418 respondents, 21 Apr 2026](https://cloudsecurityalliance.org/press-releases/2026/04/21/new-cloud-security-alliance-survey-reveals-82-of-enterprises-have-unknown-ai-agents-in-their-environments)). Behind AgntID, the agent is denied by default and approved by exception.
+- The coding example's attack is a documented incident class. In May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents (security researchers' disclosure; [incident index](https://www.upguard.com/blog/mcp-security-incidents)).
 - A voice agent that moves money is already live in India. On 10 Sep 2026 Indian Bank launched AI-TARA, which does fund transfers, IMPS and fixed deposits by voice in 10 languages and is aimed at senior citizens ([Analytics Insight, 11 Sep 2026](https://www.analyticsinsight.net/news/indian-bank-debuts-ai-tara-voice-banking-in-10-languages-at-global-fintech-fest-2026)).
 - The voice on the line can't be trusted. 47% of Indian adults have been a victim of an AI voice-clone scam or know one, and 83% of Indian victims lost money (a 2025 survey cited by [ORF, Jan 2026](https://orfonline.org/research/deepfakes-and-financial-cybercrime-india-s-multi-layered-response)). So authority has to live in the runtime, not in what the caller says.
 - UPI fraud in FY24 was 13.42 lakh incidents and ₹1,087 crore ([Lok Sabha unstarred question 2481, 15 Dec 2025](https://eparlib.sansad.in/bitstream/123456789/3018042/1/AU2481_5bIzKk.pdf)).
@@ -139,18 +139,18 @@ This is also the CI example. A pull request that loosens the merge rule turns th
 
 Every number in this README outside the table below was measured on 10 Oct 2026 on the local stand-in (`CLEARGATE_ENFORCER=local`, stub tools, scripted agents). The stand-in enforces [`policy.yaml`](policy.yaml) the way the AgntID portal is configured and labels each decision `local-policy-stand-in (not AgntID)`.
 
-The table below is for runs through the AgntID runtime. `scripts/live_all.sh` runs them all and verifies every record they write. A cell in `[brackets]` has no live run yet.
+The table below is for runs through the AgntID runtime. `scripts/live_all.sh` runs them all and verifies every record they write. No row has a live run yet: the runtime runs on our machine but the payments and comms servers are not linked to it. Until they are, the cells read "not run" and every number elsewhere is from the stand-in.
 
 | Live run through the AgntID runtime | Command | Result |
 |---|---|---|
-| Incident team: tools visible, GitHub tools visible, schema tokens | `cleargate check --mode both` | [N] → [M] |
-| Incident team: out-of-task calls that reached a tool, stock vs AgntID | `cleargate check --mode both` | [N] vs [0] |
-| Incident team: merge path, record, verdict | `cleargate check --mode both` | [after spoken approval], [MATCH], [GO] |
-| Which AgntID control stopped each incident call; intent engine in use | `cleargate check --mode both` | [control per call] |
-| Attack suite through AgntID | `cleargate attack-suite --target both` | [N] of 20 |
-| CI gate and coverage matrix | `cleargate gate --target agntid`, `cleargate coverage --target agntid` | [N] of 20, [N] gaps |
-| Bank campaign, after the destination allow-list is set in the portal | `PAYEE_CHECK=off cleargate bank --campaign --seed 7` | stock ₹[N], AgntID ₹[0] |
-| Added latency per tool call, p50 / p95 | `cleargate bench --target agntid --n 30` | [N] ms / [N] ms |
+| Incident team: tools visible, GitHub tools visible, schema tokens | `cleargate check --mode both` | not run |
+| Incident team: out-of-task calls that reached a tool, stock vs AgntID | `cleargate check --mode both` | not run |
+| Incident team: merge path, record, verdict | `cleargate check --mode both` | not run |
+| Which AgntID control stopped each incident call; intent engine in use | `cleargate check --mode both` | not run |
+| Attack suite through AgntID | `cleargate attack-suite --target both` | not run |
+| CI gate and coverage matrix | `cleargate gate --target agntid`, `cleargate coverage --target agntid` | not run |
+| Bank campaign, after the destination allow-list is set in the portal | `PAYEE_CHECK=off cleargate bank --campaign --seed 7` | not run |
+| Added latency per tool call, p50 / p95 | `cleargate bench --target agntid --n 30` | not run |
 
 ## Real-World Agent Use Case (15%)
 
@@ -284,7 +284,7 @@ Stock counts 8 attempts and gated 7 because in stock the agent's own first merge
 | Parameter policies | Control 3: `limit` 1 to 100, `amount_inr` 1 to 5000, `destination_account` allow-list |
 | Profiles and overrides | Controls 1 and 2: Protection Profile Medium, then per-tool overrides (`run_sql`, `post_message` disabled; export labelled high impact) |
 | Intent | Control 4, Standard; 11 of 86 coverage cases can only be stopped by intent |
-| Multiple controls together | One incident run uses all seven controls plus approval (`cleargate check --stub`) |
+| Multiple controls together | One incident run exercises every control except intent, plus approval (`cleargate check --stub`); intent needs the runtime |
 
 ## Appendix A: AgntID controls used
 
