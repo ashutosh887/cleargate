@@ -8,6 +8,7 @@ We built a voice support agent for a bank's failed-payment line. It takes calls 
 
 - Site: https://trycleargate.vercel.app
 - Place a call in your browser: https://trycleargate.vercel.app/try
+- Demo video: https://youtu.be/dyquPYa9eCk
 
 | Bank campaign, seed 7 (local stand-in, not AgntID) | Stock agent | Agent behind the gate |
 |---|---|---|
@@ -92,7 +93,7 @@ The table is for runs through the AgntID runtime. `scripts/live_all.sh` runs the
 | [Real-World AgntID Relevance (15%)](#real-world-agntid-relevance-15) | `reason:` on every rule in [`policy.yaml`](policy.yaml) |
 | [Depth of AgntID Usage (25%)](#depth-of-agntid-usage-25) | [depth table](#how-agntid-decides), [`cleargate/agntid_enforcer.py`](cleargate/agntid_enforcer.py), [`docs/coverage.html`](docs/coverage.html) |
 | [Technical Execution & Before/After Proof (20%)](#technical-execution--beforeafter-proof-20) | `cleargate check --stub`, `python verify.py examples/stub-gated.jsonl`, [PR #3](https://github.com/ashutosh887/cleargate/pull/3) |
-| [Demo & Communication (25%)](#demo--communication-25) | [Try a call](https://trycleargate.vercel.app/try), [`docs/DEMO.md`](docs/DEMO.md), [`docs/screenshots/`](docs/screenshots/) |
+| [Demo & Communication (25%)](#demo--communication-25) | [Try a call](https://trycleargate.vercel.app/try), [demo video](https://youtu.be/dyquPYa9eCk), [`docs/DEMO.md`](docs/DEMO.md), [`docs/screenshots/`](docs/screenshots/) |
 
 [`llms.txt`](llms.txt) is a plain-text summary of this README.
 

@@ -8,6 +8,8 @@ Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), wh
 
 Try it: https://trycleargate.vercel.app/try places a call to the bank agent. Pick a caller or type a line in English or Hinglish, and the page shows the stock and gated agents side by side with the decision, the rule and the rupees moved. It runs the same code as `cleargate bank --stub`, on the local stand-in.
 
+Demo video: https://youtu.be/dyquPYa9eCk
+
 ## What it is
 
 - For the platform or security team that signs off before an agent with real tools goes to production.
