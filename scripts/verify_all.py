@@ -349,13 +349,13 @@ def console_checks() -> None:
                         kill = re.search(r"end task|kill switch", body, re.I) or pg.query_selector("[data-kill], #kill, button:has-text('End task')")
                         add(S, "kill switch ('End task') on console", "PASS" if kill else "FAIL", "found" if kill else "not on page")
                         try:
-                            pg.keyboard.press("r")
-                            pg.wait_for_timeout(6000)
+                            pg.click("button:has-text('Run incident')", timeout=5000)
+                            pg.wait_for_timeout(15000)
                             body = pg.inner_text("body")
                         except Exception:
                             pass
                         lat = re.search(r"p50[^\n]{0,30}ms|\d+(\.\d+)?\s?ms\b", body)
-                        add(S, "latency (ms) shown on console after a replay", "PASS" if lat else "FAIL", lat.group(0) if lat else "no ms figure")
+                        add(S, "latency (ms) shown on console after a fresh run", "PASS" if lat else "FAIL", lat.group(0) if lat else "no ms figure")
                 except Exception as e:
                     add(S, f"console {path.split('?')[0]} loads", "FAIL", str(e)[:200])
                 pg.close()
