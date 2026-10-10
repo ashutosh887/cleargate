@@ -19,6 +19,31 @@ It is for the platform or security team that has to sign off before an agent wit
 
 The same gate fits banking and payments agents that refund or transfer, support agents that issue credits, DevOps agents that branch, merge and deploy, and agents that read patient, claim, payroll or employee records. This repo ships two worked examples: a bank's voice support agent and a coding agent team that fixes a payments incident.
 
+## What AgntID does vs what ClearGate adds
+
+AgntID enforces. ClearGate tests that enforcement before go-live and signs the result. The left column uses AgntID's own terms. ClearGate never edits the portal configuration.
+
+| AgntID does (runtime and portal) | ClearGate adds (the go-live gate) |
+|---|---|
+| **Tool Access Controls.** Tool Discovery and Tool Execution, starting from a Protection Profile (Low / Medium / High) | **Stock vs gated.** The same agent and input run with direct tool access and through the runtime, and ClearGate counts what reached a tool on each side |
+| **Parameter-Level Policies**, built in the Visual Policy Builder or as Rego (Policy as Code) | **`cleargate propose-policy`.** The tightest configuration that still lets every in-task call through. The engineer applies it in the portal |
+| **Intent-Based Controls**, Standard or LLM-based | **`cleargate evolve`.** Mutates every catalogue attack the policy stopped and keeps any that get through as a regression set |
+| **Simulate & Test** in the Simulator | **CI gate.** [`action.yml`](action.yml) re-runs the attacks and the legit task on every PR that touches agents or policy, fails if an attack reaches a tool, writes SARIF |
+| One **Runtime Access Decision** per call, including a `review_required` verdict | **Durable human approval.** Holds the pending call, binds the approval to the SHA-256 digest of the exact arguments, spends it once, survives a restart with `--durable`, and re-sends the call through the runtime |
+| **Scoped Access.** The Credential Engine holds tool credentials, and authority lasts for the open task | **End task.** A console kill switch that closes every task the team opened, so the agents' next call is denied |
+| **Record Trace** and Reporting (Audit & Replay) | **Signed record.** Hash-chained and Ed25519-signed. `verify.py` checks it with no keys and no network, and `cleargate evidence` packs it for a go-live review |
+| A decision for each tool call | **Coverage matrix and verdict.** Attack class × deciding control, mapped to OWASP, with a receipt for every rule. `cleargate check` turns a run into one GO / NO-GO for the whole agent |
+| A **Customer-Hosted Runtime** that evaluates before every tool call | **Latency.** Each record line keeps the time enforcement added to that call, the console shows p50 / p95, and `cleargate bench` compares direct calls with calls through the enforcer |
+
+## Try it in a browser
+
+https://trycleargate.vercel.app/try.html has two tabs:
+
+- **Bank support agent.** Type a caller's line or speak it, in English or Hinglish.
+- **Coding agent.** Five presets: `fix-refunds` (the legit task), `issue-injection`, `merge-no-approval`, `db-overreach` and `loosen-policy`.
+
+Each run plays step by step, stock and gated side by side, with the decision and rule for every call and the run's round-trip time. Every run writes a signed record, and the page shows it only after the signatures verify. The agents are scripted by default. You can pick a live Gemini model instead; if the model is unavailable, the page offers the same call on the scripted agents. Decisions come from the local stand-in, not AgntID. The bank policy includes a ₹15,000 monthly refund ceiling per customer, which only the stand-in enforces, because it needs the month's total rather than one call's arguments.
+
 ## Quickstart
 
 Requires Python 3.11+. Every step below runs offline with no keys.

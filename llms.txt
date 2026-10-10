@@ -19,6 +19,7 @@ Try it: https://trycleargate.vercel.app/try.html places a call to the bank agent
 - Bank voice support agent: voice, accounts, statements, payments, ops. The refund tool stays hidden until the call is classified as a failed payment. Refunds are capped at ₹1 to ₹5,000 and may only credit a `destination_account` on the customer's allow-list (`bank-destination-allowlist`). The bank's own payee check (inside the bank system, not AgntID or ClearGate) refuses destinations not registered to the customer.
 - AgntID controls used, in the deck's terms: Tool Access Controls (Tool Discovery and Tool Execution, Protection Profile Medium), Parameter-Level Policies (`payments_query_refunds.limit` 1 to 100, `payments_issue_refund.amount_inr` 1 to 5,000, `refund_to_account.amount_inr` up to 5,000, and a string allow-list on `refund_to_account.destination_account`), Intent-Based Controls (task intent from the engineer's request; ML-based or LLM-based), Scoped Access via the runtime's Credential Engine (the gated agents never hold the GitHub token), per-agent delegations, and task close. All feed the five-step Runtime Enforcement Flow: Intent Validation, Policy Check, Scoped Access, Execute Tool Call, Record Trace.
 - ClearGate's own layer, not AgntID-native: a human approval bound to the args digest. ClearGate holds the escalated call and re-sends the approved call through the runtime, which makes the final decision. A retried merge with different arguments is blocked because the digest no longer matches.
+- What AgntID does vs what ClearGate adds: AgntID enforces each call (Tool Access Controls, Parameter-Level Policies, Intent-Based Controls, Scoped Access, Record Trace). ClearGate tests that enforcement before go-live and signs the result: stock vs gated runs, `cleargate propose-policy`, `cleargate evolve`, a CI gate (`action.yml`), digest-bound durable approval, an End task kill switch, a signed record checked offline by `verify.py`, and a coverage matrix mapped to OWASP. The full table is in the README section of the same name and at https://trycleargate.vercel.app/how-it-works.html#vs.
 
 ## Rubric mapping
 
@@ -30,19 +31,19 @@ Try it: https://trycleargate.vercel.app/try.html places a call to the bank agent
 
 ## Key files
 
-- [README.md](README.md): overview by rubric line, controls table (Appendix A), limitations (Appendix F)
-- [cleargate/agntid_enforcer.py](cleargate/agntid_enforcer.py): AgntID SDK adapter (task open, delegation, wrapped calls, denial parsing, live sandbox guard for `main`)
-- [cleargate/enforcement.py](cleargate/enforcement.py): enforcement seam, stock client, local stand-in, escalation and approval binding
-- [cleargate/record.py](cleargate/record.py) and [verify.py](verify.py): signed record and its offline verifier
-- [cleargate/agents/](cleargate/agents/): agent loop, team prompts, LLM brains, scripted brain
-- [cleargate/bank/](cleargate/bank/): bank voice support agent, payee check, stand-in checks
-- [cleargate/evolve/](cleargate/evolve/): deterministic policy fuzzer; [attacks/evolved.json](attacks/evolved.json) is its regression set
-- [cleargate/gate.py](cleargate/gate.py) and [.github/workflows/cleargate-gate.yml](.github/workflows/cleargate-gate.yml): CI gate with SARIF output
-- [cleargate/policywriter.py](cleargate/policywriter.py): least-privilege policy writer
-- [attacks/catalog.yaml](attacks/catalog.yaml): the 20-attack catalogue
-- [policy.yaml](policy.yaml): stand-in policy mirroring the portal by hand
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/CHALLENGES.md](docs/CHALLENGES.md)
-- [docs/evolution.html](docs/evolution.html) and [docs/coverage.html](docs/coverage.html): fuzzer family tree and coverage matrix
+- [README.md](https://github.com/ashutosh887/cleargate/blob/main/README.md): overview by rubric line, controls table (Appendix A), limitations (Appendix F)
+- [cleargate/agntid_enforcer.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/agntid_enforcer.py): AgntID SDK adapter (task open, delegation, wrapped calls, denial parsing, live sandbox guard for `main`)
+- [cleargate/enforcement.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/enforcement.py): enforcement seam, stock client, local stand-in, escalation and approval binding
+- [cleargate/record.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/record.py) and [verify.py](https://github.com/ashutosh887/cleargate/blob/main/verify.py): signed record and its offline verifier
+- [cleargate/agents/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/agents/): agent loop, team prompts, LLM brains, scripted brain
+- [cleargate/bank/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/bank/): bank voice support agent, payee check, stand-in checks
+- [cleargate/evolve/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/evolve/): deterministic policy fuzzer; [attacks/evolved.json](https://github.com/ashutosh887/cleargate/blob/main/attacks/evolved.json) is its regression set
+- [cleargate/gate.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/gate.py) and [.github/workflows/cleargate-gate.yml](https://github.com/ashutosh887/cleargate/blob/main/.github/workflows/cleargate-gate.yml): CI gate with SARIF output
+- [cleargate/policywriter.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/policywriter.py): least-privilege policy writer
+- [attacks/catalog.yaml](https://github.com/ashutosh887/cleargate/blob/main/attacks/catalog.yaml): the 20-attack catalogue
+- [policy.yaml](https://github.com/ashutosh887/cleargate/blob/main/policy.yaml): stand-in policy mirroring the portal by hand
+- [docs/ARCHITECTURE.md](https://github.com/ashutosh887/cleargate/blob/main/docs/ARCHITECTURE.md), [docs/THREAT_MODEL.md](https://github.com/ashutosh887/cleargate/blob/main/docs/THREAT_MODEL.md), [docs/CHALLENGES.md](https://github.com/ashutosh887/cleargate/blob/main/docs/CHALLENGES.md)
+- [docs/evolution.html](https://github.com/ashutosh887/cleargate/blob/main/docs/evolution.html) and [docs/coverage.html](https://github.com/ashutosh887/cleargate/blob/main/docs/coverage.html): fuzzer family tree and coverage matrix
 
 ## How to run
 
@@ -89,4 +90,4 @@ All measured on 10 Oct 2026.
 ## Optional
 
 - [Showcase site](https://trycleargate.vercel.app/)
-- [docs/ROADMAP.md](docs/ROADMAP.md): what comes next
+- [docs/ROADMAP.md](https://github.com/ashutosh887/cleargate/blob/main/docs/ROADMAP.md): what comes next

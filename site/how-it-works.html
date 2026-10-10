@@ -101,7 +101,24 @@
   <figcaption>Stock team left, gated team right, decision counts on top.</figcaption>
 </figure>
 
-<h2 id="approval">The one layer we add</h2>
+<h2 id="vs">What AgntID does vs what ClearGate adds</h2>
+<p>AgntID enforces. ClearGate tests that enforcement before go-live and signs the result. The left column uses AgntID's own terms. ClearGate never edits the portal configuration.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>AgntID does (runtime and portal)</th><th>ClearGate adds (the go-live gate)</th></tr></thead>
+  <tbody>
+    <tr><td><b>Tool Access Controls.</b> Tool Discovery and Tool Execution, starting from a Protection Profile (Low / Medium / High)</td><td><b>Stock vs gated.</b> The same agent and input run with direct tool access and through the runtime, and ClearGate counts what reached a tool on each side</td></tr>
+    <tr><td><b>Parameter-Level Policies</b>, built in the Visual Policy Builder or as Rego (Policy as Code)</td><td><b><code>cleargate propose-policy</code>.</b> The tightest configuration that still lets every in-task call through. The engineer applies it in the portal</td></tr>
+    <tr><td><b>Intent-Based Controls</b>, Standard or LLM-based</td><td><b><code>cleargate evolve</code>.</b> Mutates every catalogue attack the policy stopped and keeps any that get through as a regression set</td></tr>
+    <tr><td><b>Simulate &amp; Test</b> in the Simulator</td><td><b>CI gate.</b> <code>action.yml</code> re-runs the attacks and the legit task on every PR that touches agents or policy, fails if an attack reaches a tool, writes SARIF</td></tr>
+    <tr><td>One <b>Runtime Access Decision</b> per call, including a <code>review_required</code> verdict</td><td><b>Durable human approval.</b> Holds the pending call, binds the approval to the SHA-256 digest of the exact arguments, spends it once, survives a restart with <code>--durable</code>, and re-sends the call through the runtime</td></tr>
+    <tr><td><b>Scoped Access.</b> The Credential Engine holds tool credentials, and authority lasts for the open task</td><td><b>End task.</b> A console kill switch that closes every task the team opened, so the agents' next call is denied</td></tr>
+    <tr><td><b>Record Trace</b> and Reporting (Audit &amp; Replay)</td><td><b>Signed record.</b> Hash-chained and Ed25519-signed. <code>verify.py</code> checks it with no keys and no network, and <code>cleargate evidence</code> packs it for a go-live review</td></tr>
+    <tr><td>A decision for each tool call</td><td><b>Coverage matrix and verdict.</b> Attack class &times; deciding control, mapped to OWASP, with a receipt for every rule. <code>cleargate check</code> turns a run into one GO / NO-GO for the whole agent</td></tr>
+    <tr><td>A <b>Customer-Hosted Runtime</b> that evaluates before every tool call</td><td><b>Latency.</b> Each record line keeps the time enforcement added to that call, the console shows p50 / p95, and <code>cleargate bench</code> compares direct calls with calls through the enforcer</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="approval">The one enforcement layer we add</h2>
 <p>AgntID doesn't hold pending approvals, so ClearGate does. When the fix agent asks to merge, ClearGate phones the on-call engineer, who approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments. The approved call still goes back through AgntID.</p>
 <p>When the agent retried the merge with a different title, the approval no longer fit:</p>
 <pre class="rec">{"seq": 25, "verb": <span class="v-block">"BLOCK"</span>, "agent": "fix",
