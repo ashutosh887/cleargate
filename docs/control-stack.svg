@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" width="1200" height="860" role="img" aria-labelledby="t d">
+<title id="t">Defence in depth for one tool call</title>
+<desc id="d">Seven layers a ClearGate tool call passes: visibility, per-tool, parameter, intent, credential (AgntID runtime), then digest-bound human approval and signed record (ClearGate app layer), each with an example and its real-world reason.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
+<style>
+text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; fill: #0F172A; }
+.title { font-size: 26px; font-weight: 700; }
+.sub { font-size: 14px; fill: #475569; }
+.name { font-size: 17px; font-weight: 700; }
+.ex { font-size: 14.5px; font-weight: 600; fill: #0F172A; }
+.ex2 { font-size: 13px; fill: #334155; }
+.why { font-size: 12px; fill: #64748B; font-style: italic; }
+.num { font-size: 14px; font-weight: 700; fill: #FFFFFF; }
+.side { font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
+</style>
+<rect x="0" y="0" width="1200" height="860" rx="16" fill="#FFFFFF"/>
+<rect x="6" y="6" width="1188" height="848" rx="12" fill="#F8FAFC" stroke="#CBD5E1"/>
+<text x="40" y="46" class="title">Defence in depth for one tool call</text>
+<text x="40" y="70" class="sub">Each layer stops something the one above it cannot. Layers 1–5 are enforced by the AgntID runtime; 6–7 are ClearGate's app layer on top.</text>
+<line x1="52" y1="94" x2="52" y2="824" stroke="#334155" stroke-width="2.5" marker-end="url(#ar)"/>
+<text transform="translate(32,464.0) rotate(-90)" class="side" text-anchor="middle" fill="#334155">one call from the agent, top to bottom</text>
+<rect x="72" y="100" width="1010" height="92" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+<rect x="72" y="100" width="8" height="92" rx="3" fill="#059669"/>
+<circle cx="108" cy="146.0" r="15" fill="#059669"/><text x="108" y="151.0" class="num" text-anchor="middle">1</text>
+<text x="134" y="152.0" class="name">Visibility / profile</text>
+<line x1="352" y1="114" x2="352" y2="178" stroke="#059669" stroke-opacity="0.35"/>
+<text x="370" y="128" class="ex">Protection profile Medium; export_customer_records labelled high impact</text>
+<text x="370" y="150" class="ex2">Hidden tools are not in list_tools: 46 GitHub tools narrow to the few this task needs</text>
+<text x="370" y="174" class="why">Why: PCI DSS Req 7, need-to-know: an agent cannot misuse a tool it never sees</text>
+<rect x="72" y="204" width="1010" height="92" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+<rect x="72" y="204" width="8" height="92" rx="3" fill="#059669"/>
+<circle cx="108" cy="250.0" r="15" fill="#059669"/><text x="108" y="255.0" class="num" text-anchor="middle">2</text>
+<text x="134" y="256.0" class="name">Per-tool</text>
+<line x1="352" y1="218" x2="352" y2="282" stroke="#059669" stroke-opacity="0.35"/>
+<text x="370" y="232" class="ex">payments_run_sql disabled · comms_post_message disabled</text>
+<text x="370" y="254" class="ex2">post_incident_update stays, hard-wired to #inc-4471</text>
+<text x="370" y="278" class="why">Why: Raw SQL bypasses every guard on customers.cards; incident details stay in the incident room</text>
+<rect x="72" y="308" width="1010" height="92" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+<rect x="72" y="308" width="8" height="92" rx="3" fill="#059669"/>
+<circle cx="108" cy="354.0" r="15" fill="#059669"/><text x="108" y="359.0" class="num" text-anchor="middle">3</text>
+<text x="134" y="360.0" class="name">Parameter</text>
+<line x1="352" y1="322" x2="352" y2="386" stroke="#059669" stroke-opacity="0.35"/>
+<text x="370" y="336" class="ex">issue_refund  amount_inr ≤ 5000   ·   query_refunds  limit 1–100</text>
+<text x="370" y="358" class="ex2">amount_inr=6000 denied, 50 allowed; limit=10000 denied</text>
+<text x="370" y="382" class="why">Why: RBI maker-checker on money movement; DPDP Act data minimisation</text>
+<rect x="72" y="412" width="1010" height="92" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+<rect x="72" y="412" width="8" height="92" rx="3" fill="#059669"/>
+<circle cx="108" cy="458.0" r="15" fill="#059669"/><text x="108" y="463.0" class="num" text-anchor="middle">4</text>
+<text x="134" y="464.0" class="name">Intent</text>
+<line x1="352" y1="426" x2="352" y2="490" stroke="#059669" stroke-opacity="0.35"/>
+<text x="370" y="440" class="ex">Each call checked against the engineer&#x27;s task (LLM mode)</text>
+<text x="370" y="462" class="ex2">Injected send_email to compliance-archive@outside.example ⇒ denied</text>
+<text x="370" y="486" class="why">Why: The check is on the call, not on the text the agent read, so a poisoned issue body does not carry</text>
+<rect x="72" y="516" width="1010" height="92" rx="10" fill="#ECFDF5" stroke="#059669" stroke-width="1.5"/>
+<rect x="72" y="516" width="8" height="92" rx="3" fill="#059669"/>
+<circle cx="108" cy="562.0" r="15" fill="#059669"/><text x="108" y="567.0" class="num" text-anchor="middle">5</text>
+<text x="134" y="568.0" class="name">Credential</text>
+<line x1="352" y1="530" x2="352" y2="594" stroke="#059669" stroke-opacity="0.35"/>
+<text x="370" y="544" class="ex">GitHub token lives on the runtime&#x27;s MCP server entry</text>
+<text x="370" y="566" class="ex2">Gated agents hold no token; the stock agent holds the PAT</text>
+<text x="370" y="590" class="why">Why: Zero standing privilege: a hijacked agent has no secret to leak or reuse</text>
+<rect x="72" y="620" width="1010" height="92" rx="10" fill="#F5F3FF" stroke="#7C3AED" stroke-width="1.5"/>
+<rect x="72" y="620" width="8" height="92" rx="3" fill="#7C3AED"/>
+<circle cx="108" cy="666.0" r="15" fill="#7C3AED"/><text x="108" y="671.0" class="num" text-anchor="middle">6</text>
+<text x="134" y="662.0" class="name">Human approval</text><text x="134" y="682.0" class="name" font-size="14" font-weight="600" fill="#5B21B6">bound to digest</text>
+<line x1="352" y1="634" x2="352" y2="698" stroke="#7C3AED" stroke-opacity="0.35"/>
+<text x="370" y="648" class="ex">merge_pull_request needs on-call approval (voice code)</text>
+<text x="370" y="670" class="ex2">Approval = SHA-256 of canonical args, single use, 300 s; changed args ⇒ blocked</text>
+<text x="370" y="694" class="why">Why: SOX segregation of duties: approval is not a bypass, it covers this exact merge only</text>
+<rect x="72" y="724" width="1010" height="92" rx="10" fill="#F5F3FF" stroke="#7C3AED" stroke-width="1.5"/>
+<rect x="72" y="724" width="8" height="92" rx="3" fill="#7C3AED"/>
+<circle cx="108" cy="770.0" r="15" fill="#7C3AED"/><text x="108" y="775.0" class="num" text-anchor="middle">7</text>
+<text x="134" y="776.0" class="name">Signed record</text>
+<line x1="352" y1="738" x2="352" y2="802" stroke="#7C3AED" stroke-opacity="0.35"/>
+<text x="370" y="752" class="ex">Every decision: rule, policy_version, args digest, approver</text>
+<text x="370" y="774" class="ex2">Hash-chained JSONL, Ed25519 signed; verify.py checks it offline</text>
+<text x="370" y="798" class="why">Why: Auditors and the RBI draft ask for the whole journey, provable after the fact</text>
+<path d="M1096,100 h12 V608 h-12" fill="none" stroke="#059669" stroke-width="2.5"/>
+<text transform="translate(1136,354.0) rotate(-90)" class="side" text-anchor="middle" fill="#059669">AgntID runtime</text>
+<path d="M1096,620 h12 V816 h-12" fill="none" stroke="#7C3AED" stroke-width="2.5"/>
+<text transform="translate(1136,718.0) rotate(-90)" class="side" text-anchor="middle" fill="#7C3AED">ClearGate</text>
+<text x="72" y="842" class="sub">Stock agent (no runtime): none of layers 1–5 apply, the merge is its own, and nothing is signed. Same agents, same request, same tools.</text>
+</svg>
