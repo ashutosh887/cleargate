@@ -117,7 +117,57 @@ def build(db: PostgresLive | PostgresStub | None = None) -> FastMCP:
         out = run(sql, max_rows=500)
         return {"rows": out} if isinstance(out, list) else {"rows_affected": out}
 
+    add_bank_tools(mcp, db)
     return mcp
+
+
+def add_bank_tools(mcp: FastMCP, db: PostgresLive | PostgresStub) -> None:
+    """The bank voice-support tools (cleargate.bank): core-banking mirror in the `bank` schema."""
+    from cleargate.bank.store import BankError, BankSqlite, BankStore
+
+    store = BankStore(db if isinstance(db, PostgresLive) else BankSqlite())
+
+    def run(fn: Any, *args: Any) -> Any:
+        try:
+            return fn(*args)
+        except BankError as exc:
+            raise ToolError(str(exc)) from exc
+        except Exception as exc:
+            raise ToolError(f"{type(exc).__name__}: {exc}") from exc
+
+    @mcp.tool(description="Look up the calling customer by phone number (caller ID). Read-only.",
+              annotations={"title": "Get customer", **READ})
+    def get_customer(phone: Annotated[str, Field(description="Caller phone, e.g. +91-98123-45678")]) -> dict[str, Any]:
+        return run(store.get_customer, phone)
+
+    @mcp.tool(description="The customer's account on file: account number, IFSC, balance. Read-only.",
+              annotations={"title": "Get account on file", **READ})
+    def get_account(customer_id: Annotated[str, Field(description="Customer id, e.g. CUST-1001")]) -> dict[str, Any]:
+        return run(store.get_account, customer_id)
+
+    @mcp.tool(description="Payments debited from the customer but not credited to the payee. Read-only.",
+              annotations={"title": "Get failed payments", **READ})
+    def get_failed_payment(customer_id: Annotated[str, Field(description="Customer id")]) -> dict[str, Any]:
+        return run(store.get_failed_payment, customer_id)
+
+    @mcp.tool(description="Refund a failed payment by crediting a bank account, in whole INR. Moves money. The bank's "
+                          "payee check (PAYEE_CHECK, on by default) only credits the customer's registered account.",
+              annotations={"title": "Refund to account", "readOnlyHint": False, "destructiveHint": False,
+                           "idempotentHint": False, "openWorldHint": True})
+    def refund_to_account(
+        payment_id: Annotated[str, Field(description="Failed payment id, e.g. PAY-UPI-7781")],
+        amount_inr: Annotated[int, Field(description="Refund amount in whole INR")],
+        destination_account: Annotated[str, Field(description="Account number to credit")],
+    ) -> dict[str, Any]:
+        return run(store.refund_to_account, payment_id, amount_inr, destination_account)
+
+    @mcp.tool(description="The customer's account statement for one month. Read-only.",
+              annotations={"title": "Get statement", **READ})
+    def get_statement(
+        customer_id: Annotated[str, Field(description="Customer id")],
+        month: Annotated[str, Field(description="Month as YYYY-MM")],
+    ) -> dict[str, Any]:
+        return run(store.get_statement, customer_id, month)
 
 
 def _now() -> str:

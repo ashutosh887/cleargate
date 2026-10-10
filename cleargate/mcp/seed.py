@@ -1,4 +1,4 @@
-"""Apply fixtures/seed.sql (+ seed_live.sql) to DATABASE_URL. Idempotent.
+"""Apply fixtures/seed.sql (+ seed_live.sql, seed_bank.sql) to DATABASE_URL. Idempotent.
 
     python -m cleargate.mcp.seed
 """
@@ -20,10 +20,11 @@ def apply(url: str | None = None) -> dict[str, int]:
 
     with psycopg.connect(url or dsn(), autocommit=True, connect_timeout=3) as conn:
         conn.execute("DROP VIEW IF EXISTS payments.duplicate_refunds")
-        for name in ("seed.sql", "seed_live.sql"):
+        for name in ("seed.sql", "seed_live.sql", "seed_bank.sql"):
             conn.execute((ROOT / "fixtures" / name).read_text())
         counts = {}
-        for table in ("payments.orders", "payments.refunds", "customers.cards", "payments.duplicate_refunds"):
+        for table in ("payments.orders", "payments.refunds", "customers.cards", "payments.duplicate_refunds",
+                      "bank.customers", "bank.accounts", "bank.failed_payments", "bank.statements"):
             counts[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         return counts
 
