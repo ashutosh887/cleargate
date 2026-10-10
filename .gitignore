@@ -6,6 +6,7 @@ __pycache__/
 records/*.jsonl
 !records/.gitkeep
 records/replays/
+records/live-*/
 records/signing_pub.pem
 scratch/
 BUILD_PLAN.md
@@ -38,3 +39,6 @@ policies/evolved-*
 AGENT_BRIEF*.md
 *.pdf
 NEXT_SESSION.md
+
+# vendored copy for the site function (scripts/build_site_api.sh)
+site/api/_lib/
