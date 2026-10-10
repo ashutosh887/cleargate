@@ -4,7 +4,8 @@ import json
 from typing import Any
 
 from cleargate.agents.brain import Brain
-from cleargate.tools.base import ToolClient, to_wire_name
+from cleargate.durable import Hibernate
+from cleargate.tools.base import ToolClient, ToolResult, to_wire_name
 
 
 class Agent:
@@ -20,7 +21,10 @@ class Agent:
             {"role": "system", "content": self.system},
             {"role": "user", "content": instruction},
         ]
-        for _ in range(self.max_steps):
+        return self.drive(messages, 0)
+
+    def drive(self, messages: list[dict[str, Any]], start: int) -> str:
+        for step in range(start, self.max_steps):
             turn = self.brain.next_turn(self.name, messages, self.tools.list_tools())
             if not turn.tool_calls:
                 return turn.content
@@ -33,8 +37,27 @@ class Agent:
                     for c in turn.tool_calls
                 ],
             })
-            for call in turn.tool_calls:
-                result = self.tools.call(call.name, call.args)
-                body = {"ok": result.ok, "content": result.content} if result.ok else {"ok": False, "error": result.error}
-                messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(body, default=str)[:6000]})
+            self._calls(messages, step, [(c.id, c.name, c.args) for c in turn.tool_calls])
         return f"{self.name} stopped after {self.max_steps} steps"
+
+    def _calls(self, messages: list[dict[str, Any]], step: int, calls: list[tuple[str, str, dict[str, Any]]]) -> None:
+        for index, (call_id, name, args) in enumerate(calls):
+            try:
+                result = self.tools.call(name, args)
+            except Hibernate as sleep:
+                sleep.agent = {"name": self.name, "messages": messages, "step": step,
+                               "pending": [list(c) for c in calls[index:]]}
+                raise
+            self._answer(messages, call_id, result)
+
+    @staticmethod
+    def _answer(messages: list[dict[str, Any]], call_id: str, result: ToolResult) -> None:
+        body = {"ok": result.ok, "content": result.content} if result.ok else {"ok": False, "error": result.error}
+        messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(body, default=str)[:6000]})
+
+    def finish_turn(self, checkpoint: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+        """Restore a hibernated loop: answer the held call and the rest of its turn, then return
+        (messages, next step) for drive()."""
+        messages = checkpoint["messages"]
+        self._calls(messages, checkpoint["step"], [(c[0], c[1], c[2]) for c in checkpoint["pending"]])
+        return messages, checkpoint["step"] + 1

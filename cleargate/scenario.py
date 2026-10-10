@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import dataclasses
+import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,11 +21,14 @@ from cleargate.agents.brain import Brain
 from cleargate.agents.loop import Agent
 from cleargate.agents.scripted import REFUNDS_PATHS
 from cleargate.agents.team import SYSTEMS, make_brain, team_steps
-from cleargate.approval import ApprovalBroker
+from cleargate.approval import ApprovalBroker, ApprovalRequest, ApprovalResult, approval_blocks
 from cleargate.bus import EventBus
+from cleargate.canonical import arguments_digest
 from cleargate.config import ROOT, Settings
-from cleargate.enforcement import (STOCK_SOURCE, BaseGate, EnforcementClient, Enforcer, LocalPolicyStandIn, Recorder,
-                                   StockClient)
+from cleargate.durable import (DurableHold, Hibernate, Store, ctx_from_dict, ctx_to_dict, digest_holds,
+                               rehydrate_brain, resume_note)
+from cleargate.enforcement import (STOCK_SOURCE, ApprovalEvidence, BaseGate, DelegationContext, EnforcementClient,
+                                   Enforcer, LocalPolicyStandIn, Recorder, StockClient)
 from cleargate.events import Kind, Verb
 from cleargate.policy import Policy
 from cleargate.record import SignedRecord, load_or_create_key
@@ -83,21 +90,30 @@ class ModeResult:
     reasons: list[str] = field(default_factory=list)
 
 
-def orchestrate(gate: BaseGate, brain: Brain, issue: int, prompt: str | None = None, repo: str = "") -> dict[str, str]:
+def orchestrate(gate: BaseGate, brain: Brain, issue: int, prompt: str | None = None, repo: str = "",
+                resume: dict[str, Any] | None = None) -> dict[str, str]:
     prompt = prompt or incident_prompt(issue)
-    root = gate.open_task("platform-engineer", prompt)
-    reports: dict[str, str] = {}
-    contexts = {}
     # The orchestrator is a first-class agent: its own delegation and plan, driven by the user's prompt.
-    orch_ctx = gate.delegate(root, "orchestrator", prompt)
-    contexts["orchestrator"] = orch_ctx
-    reports["orchestrator"] = Agent("orchestrator", SYSTEMS["orchestrator"], brain, gate.bind(orch_ctx)).run(prompt)
-    for agent, instruction in team_steps(issue, repo):
-        context = "\n".join(f"{k}: {v}" for k, v in reports.items())
-        ctx = gate.delegate(root, agent, instruction)
-        contexts[agent] = ctx
-        reports[agent] = Agent(agent, SYSTEMS[agent], brain, gate.bind(ctx)).run(
-            f"{instruction}\nContext: {context}" if context else instruction)
+    plan = [("orchestrator", prompt), *team_steps(issue, repo)]
+    if resume is None:
+        root, reports, contexts, start = gate.open_task("platform-engineer", prompt), {}, {}, 0
+    else:
+        root, reports, contexts, start = resume["root"], resume["reports"], resume["contexts"], resume["index"]
+    for index in range(start, len(plan)):
+        agent, instruction = plan[index]
+        try:
+            if resume is not None and index == start:
+                reports[agent], root = resume["continue"](root, contexts)
+                continue
+            context = "\n".join(f"{k}: {v}" for k, v in reports.items())
+            ctx = gate.delegate(root, agent, instruction)
+            contexts[agent] = ctx
+            reports[agent] = Agent(agent, SYSTEMS[agent], brain, gate.bind(ctx)).run(
+                f"{instruction}\nContext: {context}" if context else instruction)
+        except Hibernate as sleep:
+            sleep.team = {"root": ctx_to_dict(root), "reports": dict(reports), "index": index,
+                          "contexts": {k: ctx_to_dict(v) for k, v in contexts.items()}}
+            raise
     gate.close_task(root)
     reports["late"] = Agent("comms", SYSTEMS["comms"], brain, gate.bind(contexts["comms"])).run(
         "Send a follow-up note to #inc-4471 now that the task is done.")
@@ -222,8 +238,10 @@ def go_no_go(result: ModeResult, fixed: bool, edited_main: bool) -> None:
 
 class Run:
     def __init__(self, settings: Settings, bus: EventBus, approvals: str = "auto", policy_path: Path | None = None,
-                 force_stub: bool = False, prompt: str | None = None):
+                 force_stub: bool = False, prompt: str | None = None, durable: bool = False):
         self.settings = settings
+        self.durable = durable
+        self.approvals = approvals
         self.bus = bus
         self.policy = Policy.load(policy_path or settings.policy_path)
         self.run_id = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:4]
@@ -293,22 +311,76 @@ class Run:
                                                "tools": backends.labels, "github_base": base})
         gate, source = self._gate(mode, backends, record)
         brain = make_brain(self.settings)
+        if self.durable and isinstance(gate, EnforcementClient) and not self.single_agent:
+            gate.durable = DurableHold(self.bus)
         self.bus.publish({"type": "mode_start", "mode": mode, "run_id": self.run_id, "source": source,
                           "brain": brain.label, "tools": backends.labels})
         result = ModeResult(mode, source, path)
         try:
             result.reports = (self._judge(gate, brain) if self.single_agent else
                               orchestrate(gate, brain, self.settings.issue, self.prompt, self.settings.github_repo))
+        except Hibernate as sleep:
+            return self._hibernate(sleep, result, record, gate, brain, base)
         except Exception as exc:
             result.reports = {"error": f"{type(exc).__name__}: {exc}"}
-        result.counts = count(self.bus.history, mode)
+        return self._finish(result, backends, self.bus.history, source)
+
+    def _finish(self, result: ModeResult, backends: ToolBackends, history: list[dict[str, Any]], source: str) -> ModeResult:
+        mode, path = result.mode, result.record_path
+        result.counts = count(history, mode)
         result.verified = verify_record(path)
-        go_no_go(result, bug_fixed(backends, self.bus.history, mode),
-                 main_edited_directly(backends, self.bus.history, mode))
+        go_no_go(result, bug_fixed(backends, history, mode), main_edited_directly(backends, history, mode))
         self.results[mode] = result
         self.bus.publish({"type": "mode_done", "mode": mode, "counts": result.counts, "verdict": result.verdict,
                           "reasons": result.reasons, "verified": result.verified, "record": str(path),
                           "source": source})
+        return result
+
+    def _hibernate(self, sleep: Hibernate, result: ModeResult, record: SignedRecord, gate: BaseGate, brain: Brain,
+                   base: str) -> ModeResult:
+        """Persist the receipt and checkpoint, leave the record open (unsealed) at its chain head, and
+        return: the run holds no thread from here until a human decides."""
+        receipt, mode = sleep.receipt, result.mode
+        seq, head = record.head
+        record.unseal()
+        checkpoint = {"enforcer": self.settings.enforcer, "llm": self.settings.llm, "approvals": self.approvals,
+                      "policy_path": self.policy.source_path, "force_stub": self.force_stub, "prompt": self.prompt,
+                      "issue": self.settings.issue, "repo": self.settings.github_repo, "base": base,
+                      "visible": [t.name for t in gate.visible_tools()], "brain_branch": getattr(brain, "branch", None),
+                      "user": "platform-engineer", "team": sleep.team, "agent": sleep.agent,
+                      "ctx": receipt["ctx"], "operation_id": receipt["operation_id"], "rule": receipt["rule"],
+                      "hibernated_pid": os.getpid()}
+        Store.for_settings(self.settings).create(receipt, receipt["code"], result.record_path, seq, head, checkpoint)
+        posted = False
+        if self.broker.slack is not None:
+            try:
+                req = ApprovalRequest(self.run_id, mode, receipt["agent"], receipt["tool"], receipt["args"],
+                                      receipt["args_digest"], receipt["rule"], receipt["reason"], receipt["chain"],
+                                      id=receipt["id"])
+                self.broker.slack.post(self.settings.slack_approval_channel, f"Approval needed: {receipt['tool']}",
+                                       approval_blocks(req))
+                posted = True
+            except Exception:
+                posted = False
+        self.bus.publish({"type": "approval_pending", "mode": mode, "run_id": self.run_id, "id": receipt["id"],
+                          "agent": receipt["agent"], "tool": receipt["tool"], "args": receipt["args"],
+                          "args_digest": receipt["args_digest"], "code": receipt["code"], "rule": receipt["rule"],
+                          "delegation_chain": receipt["chain"], "slack": posted, "durable": True,
+                          "expires": receipt["expires"]})
+        self.bus.publish({"type": "durable_hibernated", "mode": mode, "run_id": self.run_id, "receipt": receipt["id"],
+                          "code": receipt["code"], "tool": receipt["tool"], "record": str(result.record_path),
+                          "expires": receipt["expires"], "stub": self.force_stub})
+        result.counts = count(self.bus.history, mode)
+        result.verified = f"OPEN: unsealed at seq {seq - 1} until receipt {receipt['id']} resumes"
+        result.verdict = "HIBERNATED"
+        result.reasons = [f"{receipt['tool']} waits on receipt {receipt['id']}; this process exits, 0 threads held",
+                          f"approve: cleargate approve {receipt['id']} --code <code>",
+                          f"resume:  cleargate resume {receipt['id']}"]
+        result.reports = {"hibernated": receipt["id"]}
+        self.results[mode] = result
+        self.bus.publish({"type": "mode_done", "mode": mode, "counts": result.counts, "verdict": result.verdict,
+                          "reasons": result.reasons, "verified": result.verified, "record": str(result.record_path),
+                          "source": gate.recorder.source})
         return result
 
     def _judge(self, gate: BaseGate, brain: Brain) -> dict[str, str]:
@@ -338,6 +410,177 @@ class Run:
                 t.join()
         self.bus.publish({"type": "run_done", "run_id": self.run_id})
         return self.results
+
+
+def history_from_record(path: Path) -> list[dict[str, Any]]:
+    """The run's decisions as bus events, read back from its signed record (whole chain, both sides
+    of a hibernation)."""
+    from cleargate.record import read_record
+
+    return [{"type": "decision", **e["payload"], "args_digest": e.get("args_digest"), "seq": e["seq"]}
+            for e in read_record(path) if (e.get("payload") or {}).get("kind") not in ("header", "seal")]
+
+
+def _context_gone(decisions: list[dict[str, Any]]) -> bool:
+    gone = re.compile(r"task\b.{0,60}(not found|unknown|expired|closed|no such|invalid)", re.I)
+    return any(d.get("verb") == Verb.BLOCK and (d.get("denial_step") in ("task_resolution", "transport")
+                                                or d.get("rule") in ("task-closed", "agntid-error")
+                                                or gone.search(str(d.get("reason") or "")))
+               for d in decisions)
+
+
+class _ResumeView:
+    """The resumed agent's tools. Under AgntID, if the runtime no longer knows the task the run slept
+    in, re-open it once with the same intent and re-send the call."""
+
+    def __init__(self, gate: EnforcementClient, ctx: DelegationContext, reopen: Any = None):
+        self.gate, self.ctx, self.reopen = gate, ctx, reopen
+
+    def list_tools(self) -> list[Any]:
+        return self.gate.visible_tools()
+
+    def call(self, name: str, args: dict[str, Any]) -> Any:
+        mark = self.gate.recorder.record.head[0]
+        ready = dict(self.gate.durable.ready)
+        result = self.gate.call(self.ctx, name, args)
+        if self.reopen is None or result.ok:
+            return result
+        since = [e for e in self.gate.recorder.bus.history if e.get("type") == "decision" and e.get("seq", -1) >= mark]
+        if not _context_gone(since):
+            return result
+        self.ctx, self.reopen = self.reopen(self.ctx), None
+        self.gate.durable.ready.update(ready)
+        return self.gate.call(self.ctx, name, args)
+
+
+def _park_stub_repo(workdir: Path) -> Path | None:
+    """GitHubStub rebuilds its repo when constructed; move the hibernated one aside first."""
+    repo = workdir / "payments-api"
+    if not repo.exists():
+        return None
+    parked = workdir / "payments-api.hibernated"
+    shutil.rmtree(parked, ignore_errors=True)
+    repo.rename(parked)
+    return parked
+
+
+def _unpark_stub_repo(backends: ToolBackends, workdir: Path, parked: Path | None) -> None:
+    if parked is None:
+        return
+    github = backends.github
+    if not isinstance(github, GitHubStub):
+        parked.rename(workdir / "payments-api")
+        return
+    shutil.rmtree(github.repo)
+    parked.rename(github.repo)
+    state = json.loads(github.state_path.read_text()) if github.state_path.exists() else {}
+    github.pulls = {int(k): v for k, v in (state.get("pulls") or {}).items()}
+    github.next_pull = max(github.pulls, default=github.next_pull - 1) + 1
+
+
+def _refresh_runtime_visible(enforcer: Any) -> None:
+    """A fresh AgntID client must know which tools the runtime exposes before an approved call is
+    re-sent, or it could probe a visible tool unapproved."""
+    from cleargate.agntid_enforcer import CONTROL_TOOLS, _name
+
+    tools = enforcer._run(enforcer.agntid.get_tools_list(enforcer._client))
+    enforcer._runtime_visible = {_name(t) for t in tools} - CONTROL_TOOLS
+
+
+def resume_receipt(receipt_id: str, settings: Settings | None = None, bus: EventBus | None = None) -> ModeResult:
+    """Continue a hibernated run from its receipt: same run id, same record chain, same enforcer path."""
+    settings = settings or Settings()
+    bus = bus or EventBus()
+    store = Store.for_settings(settings)
+    receipt, outcome = store.claim(receipt_id)
+    try:
+        return _resume(receipt, outcome, settings, bus, store)
+    except Exception as exc:
+        store.finish(receipt_id, f"failed after claim (not retried): {type(exc).__name__}: {exc}")
+        raise
+
+
+def _resume(receipt: dict[str, Any], outcome: str, base: Settings, bus: EventBus, store: Store) -> ModeResult:
+    cp = receipt["checkpoint"]
+    settings = dataclasses.replace(base, enforcer=cp["enforcer"], llm=cp["llm"], issue=cp["issue"],
+                                   github_repo=cp["repo"])
+    run = Run(settings, bus, approvals=cp["approvals"], policy_path=Path(cp["policy_path"]),
+              force_stub=cp["force_stub"], prompt=cp["prompt"], durable=True)
+    run.run_id, mode = receipt["run_id"], receipt["mode"]
+    workdir = settings.state_dir / "work" / run.run_id / mode
+    parked = _park_stub_repo(workdir)
+    backends = build_tools(settings, workdir, run.force_stub, base_branch=cp["base"])
+    _unpark_stub_repo(backends, workdir, parked)
+    path = Path(receipt["record_path"])
+    record = SignedRecord.resume(path, run.key, receipt["record_seq"], receipt["record_head"])
+    gate, source = run._gate(mode, backends, record)
+    assert isinstance(gate, EnforcementClient)
+    hold = DurableHold(bus)
+    gate.durable = hold
+    names = set(cp["visible"])
+    gate._visible = [t for t in gate._all_tools if t.name in names]
+    if gate.enforcer.source == "agntid":
+        _refresh_runtime_visible(gate.enforcer)
+    brain = make_brain(settings)
+    if cp.get("brain_branch") and hasattr(brain, "branch"):
+        brain.branch = cp["brain_branch"]
+    bus.publish({"type": "mode_start", "mode": mode, "run_id": run.run_id, "source": source, "brain": brain.label,
+                 "tools": backends.labels, "resumed_from": receipt["id"]})
+
+    held, team = cp["agent"], cp["team"]
+    original_args = dict(held["pending"][0][2])
+    held["pending"][0][2] = receipt["args"]
+    ctx = ctx_from_dict(cp["ctx"])
+    verb, reason, meta = resume_note(receipt, outcome)
+    if not digest_holds(receipt):
+        verb, reason = Verb.BLOCK, reason + "; the receipt's arguments no longer hash to the approved digest"
+    gate.recorder.emit(ctx, Kind.NOTICE, verb, tool=receipt["tool"], args=receipt["args"], rule="durable-resume",
+                       reason=reason, approver=receipt["approver"], meta=meta)
+    approved_digest = receipt["approved_digest"] or receipt["args_digest"]
+    if outcome == "approved":
+        hold.ready[(receipt["agent"], receipt["tool"], approved_digest)] = ApprovalResult(
+            True, receipt["approver"], f"{receipt['via']}, durable receipt {receipt['id']}")
+        evidence = ApprovalEvidence(True, "approved", receipt["approver"], receipt["id"], cp["operation_id"],
+                                    "cleargate:durable", receipt["tool"], approved_digest,
+                                    f"{receipt['approved_at']:.0f}", f"{receipt['expires']:.0f}")
+        gate._evidence[(ctx.task_id, ctx.agent, receipt["tool"])] = (evidence, original_args)
+    else:
+        hold.ready[(receipt["agent"], receipt["tool"], arguments_digest(receipt["args"]))] = ApprovalResult(
+            False, receipt["approver"] or f"nobody (receipt {outcome})", f"durable receipt {outcome}")
+
+    state: dict[str, Any] = {}
+
+    def reopen(old: DelegationContext) -> DelegationContext:
+        root = gate.open_task(cp["user"], run.prompt or incident_prompt(settings.issue))
+        gate.recorder.emit(root, Kind.NOTICE, Verb.NARROW, rule="agntid-task-reopened",
+                           reason=(f"AgntID task {old.task_id} was gone after hibernation; re-opened as "
+                                   f"{root.task_id} with the same intent (same prompt) to re-send the approved call"))
+        fresh = gate.delegate(root, old.agent, old.instruction)
+        state["root"], state["ctx"] = root, fresh
+        return fresh
+
+    def carry_on(root: DelegationContext, contexts: dict[str, DelegationContext]) -> tuple[str, DelegationContext]:
+        name = held["name"]
+        view = _ResumeView(gate, contexts[name], reopen if gate.enforcer.source == "agntid" else None)
+        agent = Agent(name, SYSTEMS[name], brain, view)
+        messages, step = agent.finish_turn(held)
+        if "ctx" in state:
+            contexts[name] = state["ctx"]
+        rehydrate_brain(brain, name, messages, gate.visible_tools())
+        return agent.drive(messages, step), state.get("root", root)
+
+    resume = {"root": ctx_from_dict(team["root"]), "reports": dict(team["reports"]), "index": team["index"],
+              "contexts": {k: ctx_from_dict(v) for k, v in team["contexts"].items()}, "continue": carry_on}
+    result = ModeResult(mode, source, path)
+    try:
+        result.reports = orchestrate(gate, brain, settings.issue, run.prompt, settings.github_repo, resume=resume)
+    except Hibernate as sleep:
+        store.finish(receipt["id"], f"done: {outcome}; hibernated again as receipt {sleep.receipt['id']}")
+        return run._hibernate(sleep, result, record, gate, brain, cp["base"])
+    except Exception as exc:
+        result.reports = {"error": f"{type(exc).__name__}: {exc}"}
+    store.finish(receipt["id"], f"done: {outcome}")
+    return run._finish(result, backends, history_from_record(path), source)
 
 
 def _age_hours(stamp: str, now: float) -> float:

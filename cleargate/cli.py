@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -68,14 +69,58 @@ def cmd_check(args: argparse.Namespace) -> int:
     bus = EventBus()
     if not args.quiet:
         bus.listen(print_event)
-    run = Run(settings, bus, approvals=args.approve, policy_path=args.policy, force_stub=args.stub)
+    if args.durable:
+        bus.listen(print_hibernation)
+    run = Run(settings, bus, approvals=args.approve, policy_path=args.policy, force_stub=args.stub,
+              durable=args.durable)
     print(f"ClearGate check, run {run.run_id}, policy {run.policy.source_path}")
     if settings.enforcer == "local":
         print("Gated mode uses the LOCAL POLICY STAND-IN, not AgntID. Set CLEARGATE_ENFORCER=agntid once wired.")
     results = run.run_both() if args.mode == "both" else {args.mode: run.run_mode(args.mode)}
     print_summary(results)
     gated = results.get("gated")
-    return 0 if gated is None or gated.verdict.startswith("GO") else 1
+    return 0 if gated is None or gated.verdict.startswith(("GO", "HIBERNATED")) else 1
+
+
+def print_hibernation(event: dict[str, Any]) -> None:
+    if event.get("type") != "durable_hibernated":
+        return
+    print(f"\n  HIBERNATED  {event['tool']} waits on receipt {event['receipt']}; the process exits, no thread waits")
+    if event.get("stub"):
+        print(f"  approval code for the on-call engineer (stub mode): {event['code']}")
+    print(f"  expires {time.ctime(event['expires'])}; record left open: {event['record']}")
+
+
+def cmd_approve(args: argparse.Namespace) -> int:
+    from cleargate.durable import ReceiptError, Store
+
+    store = Store.for_settings(Settings())
+    try:
+        receipt = store.decide(args.receipt, not args.reject, args.approver, "cli", args.code)
+    except ReceiptError as exc:
+        print(f"refused: {exc}")
+        return 1
+    print(f"receipt {receipt['id']} {receipt['state']} by {receipt['approver']}: {receipt['tool']} "
+          f"bound to digest {receipt['args_digest'][:12]}…")
+    print(f"resume with: cleargate resume {receipt['id']}")
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    from cleargate.durable import ReceiptError
+    from cleargate.scenario import resume_receipt
+
+    bus = EventBus()
+    if not args.quiet:
+        bus.listen(print_event)
+    bus.listen(print_hibernation)
+    try:
+        result = resume_receipt(args.receipt, Settings(), bus)
+    except ReceiptError as exc:
+        print(f"refused: {exc}")
+        return 1
+    print_summary({result.mode: result})
+    return 0 if result.verdict.startswith(("GO", "HIBERNATED")) else 1
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -83,7 +128,15 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     from cleargate.web.app import create_app
 
-    uvicorn.run(create_app(approvals=args.approve, force_stub=args.stub), host=args.host, port=args.port)
+    extra: dict[str, Any] = {}
+    if args.durable:
+        import inspect
+
+        if "durable" not in inspect.signature(create_app).parameters:
+            print("this web app has no durable wiring yet; see cleargate/DURABLE_WIRING.md")
+            return 1
+        extra["durable"] = True
+    uvicorn.run(create_app(approvals=args.approve, force_stub=args.stub, **extra), host=args.host, port=args.port)
     return 0
 
 
@@ -184,6 +237,8 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--policy", type=Path)
     check.add_argument("--stub", action="store_true", help="force every tool to its offline stub")
     check.add_argument("--quiet", action="store_true")
+    check.add_argument("--durable", action="store_true",
+                       help="on escalation, persist a task receipt and exit; approve and resume later")
     check.set_defaults(func=cmd_check)
 
     serve = sub.add_parser("serve", help="split-screen web UI with the live decision stream")
@@ -191,6 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8700)
     serve.add_argument("--approve", choices=["auto", "web"], default="web")
     serve.add_argument("--stub", action="store_true")
+    serve.add_argument("--durable", action="store_true", help="escalations hibernate to receipts; approving resumes")
     serve.set_defaults(func=cmd_serve)
 
     rep = sub.add_parser("replay", help="re-run recorded calls through the enforcement client")
@@ -220,6 +276,18 @@ def main(argv: list[str] | None = None) -> int:
 
     for name, (_, help_text) in PASSTHROUGH.items():
         sub.add_parser(name, help=help_text, add_help=False).set_defaults(func=cmd_passthrough)
+
+    apr = sub.add_parser("approve", help="approve (or --reject) a hibernated receipt with its approval code")
+    apr.add_argument("receipt")
+    apr.add_argument("--code", required=True)
+    apr.add_argument("--approver", default="platform-engineer (cli)")
+    apr.add_argument("--reject", action="store_true")
+    apr.set_defaults(func=cmd_approve)
+
+    res = sub.add_parser("resume", help="continue a hibernated run from its decided receipt")
+    res.add_argument("receipt")
+    res.add_argument("--quiet", action="store_true")
+    res.set_defaults(func=cmd_resume)
 
     seed = sub.add_parser("seed", help="seed Postgres from fixtures/seed.sql (cleargate.mcp.seed)")
     seed.set_defaults(func=cmd_seed)

@@ -88,6 +88,42 @@ class SignedRecord:
             self._prev = entry["hash"]
             return entry
 
+    @property
+    def head(self) -> tuple[int, str]:
+        """(next seq, hash of the last line): where an appender resumes the chain."""
+        with self._lock:
+            return self._seq, self._prev
+
+    def unseal(self) -> None:
+        """Drop the trailing seal so the record reads as open (a hibernated run is not finished)."""
+        with self._lock:
+            if self._seal_at is not None:
+                with self.path.open("r+b") as fh:
+                    fh.truncate(self._seal_at)
+
+    @classmethod
+    def resume(cls, path: Path, key: Ed25519PrivateKey, seq: int, head: str) -> SignedRecord:
+        """Reopen a record at a stored chain head. The file must still end at exactly that head
+        (an optional seal after it is dropped), so an edit made while the run slept is refused."""
+        raw = path.read_bytes()
+        offset, last = 0, None
+        for line in raw.splitlines(keepends=True):
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if (entry.get("payload") or {}).get("kind") == "seal":
+                break
+            offset += len(line)
+            last = entry
+        if last is None or last.get("seq") != seq - 1 or last.get("hash") != head:
+            raise ValueError(f"{path.name} no longer ends at the stored head (seq {seq - 1}, {head[:12]}…)")
+        if len([l for l in raw[offset:].splitlines() if l.strip()]) > 1:
+            raise ValueError(f"{path.name} has lines after its seal")
+        record = cls.__new__(cls)
+        record.path, record._key, record._lock = path, key, threading.Lock()
+        record._seq, record._prev, record._seal_at = seq, head, offset
+        return record
+
 
 def read_record(path: Path) -> list[dict[str, Any]]:
     """Every record line except the trailing seal (verify.py checks the seal)."""
