@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import os
 import threading
@@ -56,9 +57,16 @@ class AgntIDEnforcer:
         self.review_shape = os.environ.get("AGNTID_REVIEW_SHAPE", "error")
         # Off by default. 1: an approved call runs on ClearGate's own tool client, bypassing the runtime.
         self.direct_approved_execute = os.environ.get("AGNTID_DIRECT_APPROVED_EXECUTE", "0") == "1"
+        # Every runtime round trip is bounded, so a hung runtime fails one call instead of the run.
+        self.timeout = float(os.environ.get("AGNTID_TIMEOUT_S", "30"))
         self._loop = asyncio.new_event_loop()
         threading.Thread(target=self._loop.run_forever, daemon=True, name="agntid-loop").start()
-        self._client = self._run(self._connect())
+        try:
+            self._client = self._run(self._connect())
+        except Exception as exc:
+            raise AgntIDNotWired(f"cannot reach the AgntID runtime MCP endpoint at {self.mcp_url}: "
+                                 f"{type(exc).__name__}: {exc}") from exc
+        self._closed: set[str] = set()
         self._users: dict[str, str] = {}
         self._runtime_visible: set[str] = set()
         self._delegations: dict[str, list[str]] = {}
@@ -66,7 +74,19 @@ class AgntIDEnforcer:
         self.github_sandbox: Any = None
 
     def _run(self, coro: Any) -> Any:
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        try:
+            return future.result(timeout=self.timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"the AgntID runtime did not answer within {self.timeout:.0f}s") from None
+
+    def _decide(self, coro: Any) -> Outcome:
+        """A runtime decision, or BLOCK when the runtime times out: no answer is never an allow."""
+        try:
+            return self._run(coro)
+        except TimeoutError as exc:
+            return Outcome(Verb.BLOCK, "agntid-timeout", f"runtime error: {exc}", details={"denial_step": "transport"})
 
     async def _connect(self) -> Any:
         client = self.agntid.AgntidMCPClient(self.mcp_url, access_token=self.access_token)
@@ -169,8 +189,8 @@ class AgntIDEnforcer:
             return sandboxed
         call_args = sandboxed | ({self.approval_argument: approval.to_dict()} if approval else {})
         if self.review_shape == "envelope":
-            return self._run(self._invoke_envelope(ctx, name, call_args))
-        return self._run(self._invoke_wrapped(ctx, name, call_args))
+            return self._decide(self._invoke_envelope(ctx, name, call_args))
+        return self._decide(self._invoke_wrapped(ctx, name, call_args))
 
     def _app_layer_escalate(self, ctx: DelegationContext, tool: str, name: str, args: dict[str, Any],
                             inner: ToolClient, approval: ApprovalEvidence | None, rule: str, reason: str) -> Outcome:
@@ -179,7 +199,7 @@ class AgntIDEnforcer:
                 # Never send it unapproved: the runtime would let it run.
                 return Outcome(Verb.ESCALATE, rule, reason,
                                details={"status": "REVIEW_REQUIRED", "runtime": "visible to the agent; held by ClearGate"})
-            runtime = self._run(self._invoke_wrapped(ctx, name, dict(args)))
+            runtime = self._decide(self._invoke_wrapped(ctx, name, dict(args)))
             return Outcome(Verb.ESCALATE, rule, reason,
                            details={"status": "REVIEW_REQUIRED", "runtime_verdict": str(runtime.verb),
                                     "runtime_rule": runtime.rule, "runtime_reason": runtime.reason,
@@ -193,7 +213,7 @@ class AgntIDEnforcer:
         sandboxed = self._sandbox_args(tool, args)
         if isinstance(sandboxed, Outcome):
             return sandboxed
-        outcome = self._run(self._invoke_wrapped(ctx, name, sandboxed | {self.approval_argument: approval.to_dict()}))
+        outcome = self._decide(self._invoke_wrapped(ctx, name, sandboxed | {self.approval_argument: approval.to_dict()}))
         details = outcome.details | {"executed_by": "agntid-runtime", "approved_by": approval.approver_id}
         if outcome.verb is Verb.ALLOW:
             return Outcome(Verb.ALLOW, f"{outcome.rule} (approved by {approval.approver_id})", outcome.reason,
@@ -279,12 +299,20 @@ class AgntIDEnforcer:
                        "allowed by the AgntID runtime", ToolResult(True, payload.get("__agntid_result", _content(raw))))
 
     def close_task(self, task_id: str) -> None:
+        # Idempotent and never raises: the kill switch closes tasks the run may already have closed,
+        # and a failed close must not lose the record of a finished run.
+        if task_id in self._closed:
+            return
+        self._closed.add(task_id)
         for delegation_id in self._delegations.pop(task_id, []):
             try:
                 self._run(self.agntid.send_delegation_close(self._client, task_id, delegation_id))
             except Exception:
                 pass
-        self._run(self.agntid.send_task_close(self._client, task_id))
+        try:
+            self._run(self.agntid.send_task_close(self._client, task_id))
+        except Exception:
+            pass
 
 
 def _runtime_error(text: str) -> tuple[str, str] | None:

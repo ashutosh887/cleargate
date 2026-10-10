@@ -110,15 +110,22 @@ class ApprovalBroker:
         return box[0]
 
     def resolve(self, approval_id: str, approved: bool, approver_id: str, via: str) -> bool:
+        # Check and set under one lock: a timeout and a human answer racing must not both land.
         with self._lock:
             entry = self._pending.get(approval_id)
-        if entry is None or entry[0].is_set():
-            return False
-        entry[1].append(ApprovalResult(approved, approver_id, via))
-        entry[0].set()
+            if entry is None or entry[0].is_set():
+                return False
+            entry[1].append(ApprovalResult(approved, approver_id, via))
+            entry[0].set()
         self.bus.publish({"type": "approval_resolved", "id": approval_id, "approved": approved,
                           "approver": approver_id, "via": via})
         return True
+
+    def revoke_all(self, by: str) -> int:
+        """End task: reject every approval still waiting. Returns how many were revoked."""
+        with self._lock:
+            waiting = [rid for rid, (done, _) in self._pending.items() if not done.is_set()]
+        return sum(self.resolve(rid, False, by, "kill-switch") for rid in waiting)
 
     def resolve_by_code(self, code: str, approver_id: str, via: str = "voice", approved: bool = True) -> bool:
         """Resolve the one pending approval whose approval code equals `code` (spoken or typed).

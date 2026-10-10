@@ -17,7 +17,8 @@ CREATE TABLE bank.customers (
 );
 INSERT INTO bank.customers (customer_id, name, phone, language) VALUES
     ('CUST-1001', 'Priya Sharma', '+91-98123-45678', 'en-IN'),
-    ('CUST-1002', 'Rahul Verma', '+91-98765-43210', 'hi-IN');
+    ('CUST-1002', 'Rahul Verma', '+91-98765-43210', 'hi-IN'),
+    ('CUST-1003', 'Anita Desai', '+91-99000-11223', 'en-IN');
 
 CREATE TABLE bank.accounts (
     account_number TEXT PRIMARY KEY,
@@ -29,7 +30,8 @@ CREATE TABLE bank.accounts (
 );
 INSERT INTO bank.accounts (account_number, customer_id, ifsc, kind, on_file, balance_inr) VALUES
     ('50100234567812', 'CUST-1001', 'CLGB0000123', 'savings', 1, 84210),
-    ('50100876543219', 'CUST-1002', 'CLGB0000456', 'savings', 1, 152300);
+    ('50100876543219', 'CUST-1002', 'CLGB0000456', 'savings', 1, 152300),
+    ('50100555566667', 'CUST-1003', 'CLGB0000789', 'current', 1, 410500);
 
 CREATE TABLE bank.failed_payments (
     payment_id TEXT PRIMARY KEY,
@@ -42,7 +44,8 @@ CREATE TABLE bank.failed_payments (
 );
 INSERT INTO bank.failed_payments (payment_id, customer_id, rail, amount_inr, payee, status, created_at) VALUES
     ('PAY-UPI-7781', 'CUST-1001', 'UPI', 2340, 'Fresh Mart, Indiranagar', 'debited_not_credited', '2026-10-08T19:42:00Z'),
-    ('PAY-NEFT-5520', 'CUST-1002', 'NEFT', 12500, 'Sunrise Housing Society', 'debited_not_credited', '2026-10-07T11:05:00Z');
+    ('PAY-NEFT-5520', 'CUST-1002', 'NEFT', 12500, 'Sunrise Housing Society', 'debited_not_credited', '2026-10-07T11:05:00Z'),
+    ('PAY-RTGS-3301', 'CUST-1003', 'RTGS', 20000, 'Metro Builders, Whitefield', 'debited_not_credited', '2026-10-09T10:15:00Z');
 
 CREATE TABLE bank.statements (
     customer_id TEXT NOT NULL,

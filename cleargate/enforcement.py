@@ -100,6 +100,29 @@ def real_world_reason(policy: Policy, agent: str, tool: str, args: dict[str, Any
     return verdict.rule, verdict.reason
 
 
+class TaskKilled(Exception):
+    """The operator pressed End task: the agent stops at its next tool call."""
+
+
+class _Timed:
+    """Wraps the inner tool client and adds up the time spent in the tool itself, so the time the
+    enforcement layer added to a call is the total minus this."""
+
+    def __init__(self, inner: ToolClient):
+        self.inner = inner
+        self.spent = 0.0
+
+    def call(self, tool: str, args: dict[str, Any]) -> ToolResult:
+        start = time.perf_counter()
+        try:
+            return self.inner.call(tool, args)
+        finally:
+            self.spent += time.perf_counter() - start
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+
 SUBJECT_KEYS = ("pull_number", "issue_number", "order_id", "path", "branch")
 
 
@@ -206,6 +229,13 @@ class Recorder:
             fields.setdefault("args_digest", arguments_digest(fields["args"]))
         if fields.get("real_world_reason"):
             fields["meta"] = dict(fields.get("meta") or {}) | {"real_world_reason": fields["real_world_reason"]}
+        if ctx.delegation_id:
+            # The hop this decision belongs to, under the field names of AgntID's agntid_delegation_open.
+            hop = {"task_id": ctx.task_id, "delegation_id": ctx.delegation_id,
+                   "parent_delegation_id": ctx.parent_delegation_id,
+                   "parent_agent_id": ctx.chain[-2] if len(ctx.chain) > 1 else "", "acting_agent_id": ctx.agent,
+                   "tool_allowlist": list(ctx.tool_allowlist)}
+            fields["meta"] = dict(fields.get("meta") or {}) | {"agntid_delegation": hop}
         decision = Decision(kind=kind, verb=verb, source=self.source, run_id=self.run_id, mode=self.mode,
                             task_id=ctx.task_id, agent=ctx.agent, delegation_chain=list(ctx.chain), **fields)
         payload = decision.to_dict()
@@ -223,6 +253,7 @@ class AgentToolView:
         return self._gate.visible_tools()
 
     def call(self, name: str, args: dict[str, Any]) -> ToolResult:
+        self._gate.check_alive()
         return self._gate.call(self.ctx, name, args)
 
 
@@ -241,6 +272,26 @@ class BaseGate:
         self.policy = policy
         self._all_tools = inner.list_tools()
         self._visible = list(self._all_tools)
+        self.killed_by = ""
+        self._tasks: list[str] = []
+
+    def check_alive(self) -> None:
+        if self.killed_by:
+            raise TaskKilled(f"task ended by {self.killed_by}")
+
+    def stop(self, by: str) -> None:
+        """First half of End task: no further tool call leaves this agent team."""
+        self.killed_by = by or "operator"
+
+    def kill(self, by: str, revoked: int) -> None:
+        """Second half of End task: record it. The stock team has no enforcement point, so stopping
+        the process is all there is; its credentials stay live."""
+        self.recorder.emit(self._kill_ctx(by), Kind.KILL, Verb.UNGUARDED, rule="kill-switch",
+                           reason=f"End task by {by}: agent process stopped; no enforcement point, its credentials stay live",
+                           meta={"tasks": list(self._tasks), "approvals_revoked": revoked})
+
+    def _kill_ctx(self, by: str) -> DelegationContext:
+        return DelegationContext(self._tasks[-1] if self._tasks else "none", "operator", (f"user:{by}", "operator"))
 
     def visible_tools(self) -> list[ToolSpec]:
         return list(self._visible)
@@ -270,6 +321,7 @@ class StockClient(BaseGate):
 
     def open_task(self, user: str, prompt: str) -> DelegationContext:
         ctx = DelegationContext(str(uuid.uuid4()), "orchestrator", (f"user:{user}", "orchestrator"))
+        self._tasks.append(ctx.task_id)
         stats = tool_stats(self._visible)
         self.recorder.emit(ctx, Kind.TASK_OPEN, Verb.UNGUARDED,
                            reason=f"no narrowing: {stats['github_tools']} GitHub tools visible",
@@ -310,12 +362,14 @@ class EnforcementClient(BaseGate):
         self.broker = broker
         self.approval_ttl = approval_ttl
         self.durable: Any = None
+        self._enforce_ms: float | None = None
         self._evidence: dict[tuple[str, str, str], tuple[ApprovalEvidence, dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
     def open_task(self, user: str, prompt: str) -> DelegationContext:
         opened = self.enforcer.open_task(user, prompt, self._all_tools)
         self._visible = opened.visible
+        self._tasks.append(opened.task_id)
         ctx = DelegationContext(opened.task_id, "orchestrator", (f"user:{user}", "orchestrator"))
         before, after = tool_stats(self._all_tools), tool_stats(self._visible)
         self.recorder.emit(ctx, Kind.TASK_OPEN, Verb.NARROW, rule="task-open",
@@ -332,6 +386,16 @@ class EnforcementClient(BaseGate):
                                        "narrowing is the runtime protection profile only, every call is still checked"),
                                meta={"intent_reason": opened.details.get("intent_reason", "")})
         return ctx
+
+    def kill(self, by: str, revoked: int) -> None:
+        """End task under enforcement: every task this team opened is closed on the enforcer, so any
+        later call is denied there (task-closed), not by ClearGate."""
+        for task_id in self._tasks:
+            self.enforcer.close_task(task_id)
+        self.recorder.emit(self._kill_ctx(by), Kind.KILL, Verb.BLOCK, rule="kill-switch",
+                           reason=(f"End task by {by}: {len(self._tasks)} task(s) closed on {self.recorder.source} "
+                                   f"(every later call denied there), {revoked} pending approval(s) revoked, agent stopped"),
+                           meta={"tasks": list(self._tasks), "approvals_revoked": revoked})
 
     def delegate(self, parent: DelegationContext, agent: str, instruction: str) -> DelegationContext:
         ctx = self.enforcer.open_delegation(parent, agent, instruction)
@@ -353,7 +417,10 @@ class EnforcementClient(BaseGate):
                 return self._settle(ctx, tool, args, Outcome(Verb.BLOCK, "approval-evidence", refusal,
                                                              details={"denial_step": "approval"}), None, why,
                                     outside=True)
-        outcome = self.enforcer.invoke(ctx, tool, args, self.inner, None)
+        timed = _Timed(self.inner)
+        start = time.perf_counter()
+        outcome = self.enforcer.invoke(ctx, tool, args, timed, None)
+        self._enforce_ms = round((time.perf_counter() - start - timed.spent) * 1000, 3)
         evidence: ApprovalEvidence | None = None
         if outcome.verb is Verb.ESCALATE:
             escalated = self._escalate(ctx, tool, args, outcome, why)
@@ -387,7 +454,7 @@ class EnforcementClient(BaseGate):
                       policy_name=str(details.get("policy_name") or outcome.rule),
                       intent_mismatch=str(details.get("intent_mismatch") or ""),
                       denial_step=str(details.get("denial_step") or ""),
-                      real_world_reason=why[1], meta=details | {"mirror_rule": why[0]})
+                      real_world_reason=why[1], meta=details | {"mirror_rule": why[0]} | self._latency())
         if outcome.verb is Verb.ALLOW and outcome.result is not None:
             self.recorder.emit(ctx, Kind.CALL, Verb.ALLOW, executed=outcome.result.ok, approver=approver,
                                result_preview=outcome.result.preview(), **common)
@@ -396,6 +463,14 @@ class EnforcementClient(BaseGate):
             outside = self._outside_task(ctx, tool, args, outcome)
         self.recorder.emit(ctx, Kind.CALL, Verb.BLOCK, outside_task=outside, **common)
         return ToolResult(False, None, f"BLOCKED by {outcome.rule}: {outcome.reason}")
+
+    def _latency(self) -> dict[str, Any]:
+        ms, self._enforce_ms = self._enforce_ms, None
+        if ms is None:
+            return {}
+        scope = ("AgntID runtime round trip, including the proxied tool" if self.recorder.source == "agntid"
+                 else "local stand-in decision time, tool time excluded")
+        return {"enforce_ms": ms, "enforce_ms_scope": scope}
 
     def _outside_task(self, ctx: DelegationContext, tool: str, args: dict[str, Any], outcome: Outcome) -> bool:
         """The policy decides what the task is. A denial of a call the policy allows or escalates

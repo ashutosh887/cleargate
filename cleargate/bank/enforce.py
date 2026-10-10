@@ -50,6 +50,7 @@ class Session:
     account: dict[str, Any] = field(default_factory=dict)
     failed: list[dict[str, Any]] = field(default_factory=list)
     payment_task_open: bool = False
+    refunded_month_inr: int = 0
 
     @property
     def customer_id(self) -> str:
@@ -75,6 +76,8 @@ class Session:
         session.account = account.content if account.ok else {}
         failed = inner.call("payments.get_failed_payment", {"customer_id": session.customer_id})
         session.failed = list((failed.content or {}).get("failed_payments") or []) if failed.ok else []
+        # The demo ledger only holds refunds made since the seed, so its total is this month's.
+        session.refunded_month_inr = sum(int(p.get("refunded_inr") or 0) for p in session.failed)
         return session
 
 
@@ -108,7 +111,8 @@ TASK_INTENT = "failed-payment enquiry for the caller's own account"
 BANK_SYSTEM = "bank-system-payee-check"
 SIMULATED = {"visibility": "local-simulation: AgntID tool visibility",
              "intent-mismatch": "local-simulation: AgntID Intent-Based Controls",
-             "bank-refund-within-cap": "local-simulation: AgntID Parameter-Level Policy"}
+             "bank-refund-within-cap": "local-simulation: AgntID Parameter-Level Policy",
+             "bank-monthly-refund-ceiling": "local-simulation: monthly ceiling (needs the month's total, not one call's arguments)"}
 
 
 class BankEnforcer:
@@ -126,6 +130,7 @@ class BankEnforcer:
         self.before = tuple(section.get("visible_before_payment_task") or ())
         self.once = tuple(section.get("visible_once_payment_task") or ())
         self.cap = int(section.get("refund_cap_inr") or 5000)
+        self.ceiling = int(section.get("monthly_refund_ceiling_inr") or 0)
 
     def visible(self) -> set[str]:
         return set(self.before) | (set(self.once) if self.session.payment_task_open else set())
@@ -174,6 +179,9 @@ class BankEnforcer:
         maker_checker = self.policy.evaluate(agent, tool, args).verb is Verb.ESCALATE
         if amount > self.cap and (intent or not maker_checker):
             return [("bank-refund-within-cap", f"₹{amount:,} is over the ₹{self.cap:,} amount_inr limit"), *intent]
+        if self.ceiling and not intent and s.refunded_month_inr + amount > self.ceiling:
+            return [("bank-monthly-refund-ceiling", f"₹{s.refunded_month_inr:,} already refunded to {s.customer_id} this "
+                                                    f"month; ₹{amount:,} more passes the ₹{self.ceiling:,} monthly ceiling")]
         return intent
 
     def invoke(self, ctx: DelegationContext, tool: str, args: dict[str, Any], inner: ToolClient,
@@ -187,6 +195,8 @@ class BankEnforcer:
                                         "intent_mismatch": next((w for r, w in sims if r == "intent-mismatch"), ""),
                                         "simulated": [r for r, _ in sims]})
         outcome = self.inner.invoke(ctx, tool, args, inner, approval)
+        if tool == REFUND and outcome.verb is Verb.ALLOW and outcome.result is not None and outcome.result.ok:
+            self.session.refunded_month_inr += int(args.get("amount_inr") or 0)
         if outcome.result is not None and not outcome.result.ok and PAYEE_ERROR in str(outcome.result.error):
             return replace(outcome, details=outcome.details | {"denial_step": BANK_SYSTEM, "stage": BANK_SYSTEM})
         return outcome

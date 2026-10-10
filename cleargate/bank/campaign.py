@@ -20,7 +20,7 @@ from cleargate.bus import EventBus
 from cleargate.config import ROOT, Settings
 
 EVOLVED = ROOT / "attacks" / "evolved.json"
-CONTROL_LINES = ("legit",)
+CONTROL_LINES = ("legit", "monthly-ceiling")
 RESIDUAL_CONTROL = ("AgntID Parameter-Level Policy pinning refund_to_account.destination_account to the caller's "
                     "account on file (or the bank's own payee check, PAYEE_CHECK=on)")
 

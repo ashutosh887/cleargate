@@ -167,6 +167,25 @@ def create_app(approvals: str = "web", force_stub: bool = False, durable: bool =
         return {"run_id": run.run_id, "prompt": prompt, "prompt_used": run.prompt is not None,
                 "prompt_scope": "task intent for narrowing; team steps unchanged" if run.prompt else ""}
 
+    @app.post("/api/kill")
+    async def kill(request: Request) -> dict[str, Any]:
+        """End task (kill switch): stops the running incident run or bank call."""
+        require_approver(request)
+        by = "operator"
+        try:
+            body = await request.json()
+            by = str((body or {}).get("by") or by)[:40]
+        except Exception:
+            pass
+        targets = []
+        if busy() and state["run"] is not None and hasattr(state["run"], "kill"):
+            targets.append(state["run"])
+        if bank_busy() and bank["call"] is not None:
+            targets.append(bank["call"])
+        if not targets:
+            raise HTTPException(409, "nothing is running")
+        return {"killed": [await run_in_threadpool(lambda t=t: t.kill(by)) for t in targets]}
+
     @app.post("/api/approvals/voice")
     async def voice_approval(request: Request) -> dict[str, Any]:
         require_approver(request)

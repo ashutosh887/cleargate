@@ -257,6 +257,20 @@ class Run:
             slack = SlackStub(settings.state_dir / "work" / self.run_id / "approvals")
         self.broker = ApprovalBroker(bus, approvals, slack, settings.slack_approval_channel)
         self.results: dict[str, ModeResult] = {}
+        self.gates: dict[str, BaseGate] = {}
+
+    def kill(self, by: str = "operator") -> dict[str, Any]:
+        """End task: stop every agent team, revoke pending approvals, close the tasks on the enforcer,
+        and write a signed kill line into each mode's record."""
+        gates = list(self.gates.values())
+        for gate in gates:
+            gate.stop(by)
+        revoked = self.broker.revoke_all(by)
+        for gate in gates:
+            gate.kill(by, revoked)
+        out = {"run_id": self.run_id, "modes": sorted(self.gates), "approvals_revoked": revoked, "by": by}
+        self.bus.publish({"type": "killed", **out})
+        return out
 
     def _gate(self, mode: str, backends: ToolBackends, record: SignedRecord) -> tuple[BaseGate, str]:
         inner = backends.client
@@ -310,6 +324,7 @@ class Run:
                                                "policy_path": self.policy.source_path, "policy_version": self.policy_version,
                                                "tools": backends.labels, "github_base": base})
         gate, source = self._gate(mode, backends, record)
+        self.gates[mode] = gate
         brain = make_brain(self.settings)
         if self.durable and isinstance(gate, EnforcementClient) and not self.single_agent:
             gate.durable = DurableHold(self.bus)

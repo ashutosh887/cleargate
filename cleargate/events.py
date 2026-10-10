@@ -21,6 +21,7 @@ class Kind(StrEnum):
     APPROVAL = "approval"
     TASK_CLOSE = "task_close"
     NOTICE = "notice"
+    KILL = "kill"
 
 
 @dataclass

@@ -27,10 +27,18 @@
   button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--narrow); outline-offset: 2px; }
   button.primary { background: var(--paper); border-color: var(--paper); color: var(--ink); font-weight: 600; }
   button:disabled { opacity: .4; cursor: default; }
+  button.danger { color: var(--block); border-color: var(--block); background: transparent; }
+  button.danger:not(:disabled):hover { background: var(--block); color: var(--ink); }
+  .lat { font: 400 13px/1.3 var(--mono); color: var(--muted); white-space: nowrap; flex: none; }
+  .facts.lat { white-space: normal; }
+  .lat b { color: var(--paper); font-weight: 600; }
+  .slim.killed { color: var(--block); border-left: 3px solid var(--block); padding-left: 8px; }
   kbd { font-family: var(--mono); font-size: 12px; border: 1px solid var(--rule); border-radius: 3px; padding: 0 5px; color: var(--muted); margin-left: 4px; }
 
   /* header */
   header { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
+  header > button { white-space: nowrap; flex: none; }
+  @media (max-width: 1560px) { header > button kbd { display: none; } header { gap: 12px; } }
   header h1 { margin: 0; white-space: nowrap; font: 800 22px/1 var(--sans); letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
   header h1 .mark, .bank-top h2 .mark { display: inline-block; flex: none; font: 800 13px/1 var(--sans); letter-spacing: .04em; color: var(--escalate); border: 2.5px solid currentColor; border-radius: 4px; padding: 4px 5px 3px; transform: rotate(-4deg); }
   header h1 span { color: var(--muted); font-weight: 400; font-size: 15px; letter-spacing: 0; }
@@ -338,9 +346,11 @@
   <h1><span class="mark" aria-hidden="true">CG</span>ClearGate <span>on-call agents, gated by AgntID</span></h1>
   <span class="spacer"></span>
   <span id="brain" class="line" title="Which model drives the agents"></span>
+  <span id="lat" class="lat" title="Time the enforcement layer added per gated call, tool time excluded"></span>
   <span id="enforcer" class="badge standin" title="Which enforcer decides the right-hand pane">checking enforcer…</span>
   <button id="bank-open" title="Judge phone-in: call the bank's voice agent (key B)">Call the bank <kbd>B</kbd></button>
   <button id="replay" title="Replay the latest signed record (key R)">Replay <kbd>R</kbd></button>
+  <button id="kill" class="danger" disabled title="End task: stop the agents, revoke pending approvals and close the task on the enforcer (key K)">End task <kbd>K</kbd></button>
   <button id="go" disabled title="Key G">Go-live <kbd>G</kbd></button>
 </header>
 
@@ -393,6 +403,7 @@
     <span class="who">You are the caller on <code id="bank-phone">+91-98123-45678</code>. One voice support agent, run twice: no gate on the left, gated on the right.</span>
     <span class="spacer"></span>
     <span id="bank-badge" class="badge standin">checking enforcer…</span>
+    <button id="bank-kill" class="danger" disabled title="End task: stop both agents and revoke any pending approval">End task</button>
     <button id="bank-close" title="Back to the incident (Esc)">Close <kbd>Esc</kbd></button>
   </div>
   <div class="bank-dial">
@@ -679,11 +690,45 @@ function flowHtml(e, m) {
   return `<div class="flow">${cells}</div><div class="flowcap">${cap}</div>`;
 }
 
+// Latency the enforcement layer added: p50 and p95 of meta.enforce_ms over the gated calls seen.
+function pctl(xs, p) { if (!xs.length) return null; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor((s.length - 1) * p))]; }
+function fmtMs(x) { return x == null ? "–" : (x < 1 ? x.toFixed(3) : x < 10 ? x.toFixed(1) : Math.round(x)) + " ms"; }
+function latText(xs, source, brief) {
+  if (!xs.length) return "";
+  const live = /^agntid/i.test(String(source || ""));
+  const nums = `+<b>${fmtMs(pctl(xs, .5))}</b> p50 · <b>${fmtMs(pctl(xs, .95))}</b> p95`;
+  if (brief) return `${nums} · ${live ? "AgntID" : "stand-in"}`;
+  return `${live ? "AgntID" : "Stand-in"} added ${nums} over ${xs.length} calls${live ? "" : " (local evaluator, not AgntID)"}`;
+}
+let latMs = [], latSrc = "";
+function latFeed(e) {
+  const ms = e.meta?.enforce_ms;
+  if (e.mode !== "gated" || typeof ms !== "number") return;
+  latMs.push(ms); latSrc = e.source;
+  $("lat").innerHTML = latText(latMs, latSrc, true);
+  $("lat").title = latText(latMs, latSrc).replace(/<[^>]+>/g, "");
+}
+async function killTask() {
+  $("kill").disabled = true; $("bank-kill").disabled = true;
+  const r = await fetch("/api/kill" + kq("?"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ by: "on-call engineer" }) });
+  const j = await r.json().catch(() => ({}));
+  const msg = r.ok ? `task ended · ${(j.killed || []).map(k => `${k.approvals_revoked} approval(s) revoked`).join(", ")}` : (j.detail || "end task failed");
+  status(msg); if ($("bank").classList.contains("show")) bankStatus(msg, !r.ok);
+}
+function killRow(e) {
+  const div = document.createElement("div");
+  div.className = "slim killed";
+  div.innerHTML = `<b>END TASK</b> · ${esc(e.reason)}`;
+  return div;
+}
+
 function decision(e) {
   const key = `${e.mode}:${e.seq}`;
   if (!panes[e.mode] || seen.has(key)) return;
   seen.add(key);
   treeFeed("dtree", e);
+  latFeed(e);
+  if (e.kind === "kill") { append(e.mode, killRow(e)); return; }
   const s = stats[e.mode], m = e.meta || {};
   const div = document.createElement("div");
 
@@ -719,7 +764,7 @@ function decision(e) {
   if (e.kind === "approval") {
     const ok = e.verb === "ALLOW";
     if (ok && e.mode === "gated") { info.approver = e.approver; info.approvedDigest = e.args_digest; }
-    if (e.mode === "gated") sign(ok ? "signed" : "refused", `${ok ? "Signed" : "Refused"} by ${esc(e.approver || "?")}`, `bound to digest ${short(e.args_digest)}`);
+    if (e.mode === "gated") sign(ok ? "signed" : "refused", e.meta?.via === "kill-switch" ? "Task ended, approval revoked" : `${ok ? "Signed" : "Refused"} by ${esc(e.approver || "?")}`, `bound to digest ${short(e.args_digest)}`);
     div.className = "slim " + (ok ? "approved" : "rejected");
     div.innerHTML = `${ok ? "APPROVED" : "REJECTED"} <b>${esc(e.tool)}</b> by <b>${esc(e.approver || "?")}</b> · bound to digest <code>${esc(short(e.args_digest))}</code>`;
     append(e.mode, div); return;
@@ -814,7 +859,7 @@ function approvalResolved(e) {
   const box = document.getElementById(`ap-${e.id}`);
   if (!box) return;
   if (e.approved) { info.approver = e.approver; info.approvedDigest = box.dataset.digest; }
-  if (box.closest("#pane-gated")) sign(e.approved ? "signed" : "refused", `${e.approved ? "Signed" : "Refused"} by ${esc(e.approver)}`,
+  if (box.closest("#pane-gated")) sign(e.approved ? "signed" : "refused", e.via === "kill-switch" ? "Task ended, approval revoked" : `${e.approved ? "Signed" : "Refused"} by ${esc(e.approver)}`,
     `via ${e.via || "?"}, bound to digest ${short(box.dataset.digest)}`);
   box.outerHTML = `<div class="slim ${e.approved ? "approved" : "rejected"}">${e.approved ? "APPROVED" : "REJECTED"} by <b>${esc(e.approver)}</b> via ${esc(e.via)} · bound to digest <code>${esc(short(box.dataset.digest))}</code></div>`;
 }
@@ -925,13 +970,14 @@ function handle(e) {
   if (e.type === "mode_start" && e.subject === "bank") bankRuns.add(e.run_id);
   if (e.type !== "run_start" && e.type !== "approval_resolved" && isBank(e)) { bankEvent(e); return; }
   switch (e.type) {
-    case "run_start": reset(); treeNew("dtree"); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
+    case "killed": $("kill").disabled = true; $("bank-kill").disabled = true; $("start").disabled = false; break;
+    case "run_start": reset(); latMs = []; $("lat").innerHTML = ""; $("kill").disabled = !!e.replay; treeNew("dtree"); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
     case "mode_start": if (e.mode === "gated") setBadge(e.source, isReplay || e.replay); if (e.brain) { $("brain").textContent = brainLabel(e.brain); $("brain").title = e.brain; } break;
     case "decision": decision(e); break;
     case "approval_pending": approvalPending(e); break;
     case "approval_resolved": approvalResolved(e); break;
     case "mode_done": done[e.mode] = e; fromCounts(e.mode, e.counts); break;
-    case "run_done": $("go").disabled = false; $("start").disabled = false; status(isReplay ? "replay done · press G" : "run done · press G"); setTimeout(() => { if (!$("bank").classList.contains("show")) showVerdict(); }, 1200); break;
+    case "run_done": $("kill").disabled = true; $("go").disabled = false; $("start").disabled = false; status(isReplay ? "replay done · press G" : "run done · press G"); setTimeout(() => { if (!$("bank").classList.contains("show")) showVerdict(); }, 1200); break;
   }
 }
 
@@ -939,7 +985,7 @@ function handle(e) {
 const APP_LAYER = "cleargate-app-layer";
 const REFUND_TOOL = /refund_to_account$/;
 const CHIP_LABEL = { legit: "Failed UPI payment, ₹2,340", branch: "Fake branch officer, ₹48,000", statement: "Statement, plus a refund",
-  hinglish: "Hinglish “RBI fraud cell”", "under-cap-new-account": "Under-cap refund to a new account" };
+  hinglish: "Hinglish “RBI fraud cell”", "under-cap-new-account": "Under-cap refund to a new account", "monthly-ceiling": "Four ₹4,900 refunds, ₹15,000 monthly ceiling" };
 const bankRuns = new Set();
 const bk = { runs: {}, current: null, busy: false, sarvam: false, unlocked: false, lastReply: null };
 const bankAudio = new Audio();
@@ -1076,6 +1122,7 @@ function bankRow(e, r) {
     return div;
   }
   if (e.kind === "delegation") { div.className = "slim"; div.innerHTML = `${chainHtml(e)} · ${esc(trunc(plainReason(e) || e.meta?.instruction || "", 70))}`; return div; }
+  if (e.kind === "kill") return killRow(e);
   if (e.kind === "task_close") { div.className = "slim"; div.innerHTML = `<b>task closed</b>${e.mode === "gated" ? " · any later call is a fresh authorization event" : ""}`; return div; }
   if (e.kind === "notice") {
     div.className = "slim" + (e.verb === "NARROW" ? " narrow" : "");
@@ -1138,6 +1185,7 @@ function bankFoot(mode) {
       · refunded to the account on file${aof ? ` (••${esc(aof.slice(-4))})` : ""} <b>${inr(c.refunded_to_file_inr)}</b></div>
     <div class="says"><span>${gated ? "Caller hears" : "Agent says"}</span><span class="reason">“${esc(pane.reply_text)}”</span>${gated ? `<button id="bank-replay" title="Play the reply again">Play</button>` : ""}</div>
     ${!gated && c.attack_reached_tool && !moved ? `<div class="facts">The attack reached the refund tool; only the core-banking payee check stopped the money.</div>` : ""}
+    ${gated && latText(bankLat(r), r.src.gated) ? `<div class="facts lat">${latText(bankLat(r), r.src.gated)}</div>` : ""}
     ${pane.error ? `<div class="facts bad">${esc(pane.error)}</div>` : ""}
     <div class="links"><a href="/api/bank/record/${encodeURIComponent(rec)}${keyQ()}" target="_blank" rel="noopener">record ${esc(rec)}</a>
       <a class="${ok ? "ok" : "bad"}" href="/api/bank/verify/${encodeURIComponent(rec)}${keyQ()}" target="_blank" rel="noopener" title="Re-run verify.py on this record">${esc(trunc(pane.verified || "unverified", 60))}</a></div>`;
@@ -1199,13 +1247,22 @@ function bankSpeak(j) {
   }
 }
 
+function bankLat(r) {
+  const evs = r?.result?.decisions?.length ? r.result.decisions.filter(d => d.mode === "gated") : (r?.events?.gated || []);
+  return evs.map(d => d.meta?.enforce_ms ?? d.enforce_ms).filter(x => typeof x === "number");
+}
 function bankBusy(on) {
   bk.busy = on;
+  $("bank-kill").disabled = !on;
   for (const id of ["bank-send", "bank-mic"]) $(id).disabled = on;
   document.querySelectorAll("#bank-chips .chip").forEach(c => c.disabled = on);
 }
 
-async function bankSend(what) {
+// Demo callers who are not the default customer call from their own registered number (as in the CLI).
+const DEFAULT_CALLER = "+91-98123-45678";
+const CHIP_PHONE = { "under-cap-new-account": "+91-98765-43210", "monthly-ceiling": "+91-99000-11223" };
+async function bankSend(what, phone = DEFAULT_CALLER) {
+  $("bank-phone").textContent = phone;
   if (bk.busy) return;
   unlockAudio();
   bankBusy(true);
@@ -1218,10 +1275,10 @@ async function bankSend(what) {
       const type = (what.type || "audio/mp4").split(";")[0];
       const ext = { "audio/mp4": ".m4a", "audio/ogg": ".ogg", "audio/wav": ".wav", "audio/mpeg": ".mp3" }[type] || ".webm";
       const fd = new FormData();
-      fd.append("file", what, "caller" + ext); fd.append("mode", "both");
+      fd.append("file", what, "caller" + ext); fd.append("mode", "both"); fd.append("phone", phone);
       r = await fetch("/api/bank/call/audio", { method: "POST", body: fd });
     } else {
-      r = await fetch("/api/bank/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: what, mode: "both" }) });
+      r = await fetch("/api/bank/call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: what, mode: "both", phone }) });
     }
     const j = await r.json().catch(() => ({}));
     if (!r.ok) { bankStatus(r.status === 403 ? "Open this page with the ?k= key the presenter shares" : (j.detail || `call failed (${r.status})`), true); return; }
@@ -1306,12 +1363,12 @@ function loadBank() {
   fetch("/api/bank/demo").then(r => r.json()).then(lines => {
     $("bank-chips").innerHTML = "";
     for (const [key, text] of Object.entries(lines || {})) {
-      const legit = key === "legit";
+      const legit = key === "legit" || key === "monthly-ceiling";
       const b = document.createElement("button");
       b.className = "chip " + (legit ? "legit" : "attack");
       b.title = text; b.dataset.key = key;
-      b.innerHTML = `<span class="k">${legit ? "LEGIT" : "ATTACK"}</span>${esc(CHIP_LABEL[key] || key.replace(/[-_]+/g, " "))}`;
-      b.onclick = () => { $("bank-text").value = text; bankSend(text); };
+      b.innerHTML = `<span class="k">${key === "monthly-ceiling" ? "LIMIT" : legit ? "LEGIT" : "ATTACK"}</span>${esc(CHIP_LABEL[key] || key.replace(/[-_]+/g, " "))}`;
+      b.onclick = () => { $("bank-text").value = text; bankSend(text, CHIP_PHONE[key]); };
       $("bank-chips").appendChild(b);
     }
   }).catch(() => { bankLoaded = false; });
@@ -1336,6 +1393,8 @@ $("start").onclick = startRun;
 $("prompt").addEventListener("keydown", k => { if (k.key === "Enter") startRun(); });
 $("mic-prompt").onclick = () => listen($("mic-prompt"), t => $("prompt").value = t, t => { $("prompt").value = t; startRun(); });
 $("replay").onclick = startReplay;
+$("kill").onclick = killTask;
+$("bank-kill").onclick = killTask;
 $("go").onclick = showVerdict;
 if (location.pathname === "/bank" || location.hash === "#bank") bankOpen(true);
 $("verdict").onclick = ev => { if (ev.target.id === "verdict") $("verdict").classList.remove("show"); };
@@ -1347,6 +1406,7 @@ document.addEventListener("keydown", k => {
   if ($("bank").classList.contains("show")) return;
   if (k.key === "g" || k.key === "G") showVerdict();
   if (k.key === "r" || k.key === "R") startReplay();
+  if ((k.key === "k" || k.key === "K") && !$("kill").disabled) killTask();
   if (k.key === "Escape") $("verdict").classList.remove("show");
 });
 </script>
