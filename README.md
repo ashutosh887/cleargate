@@ -1,5 +1,7 @@
 # ClearGate
 
+[![ClearGate gate](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml/badge.svg?branch=main)](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml) [![Try a call](https://img.shields.io/badge/try_a_call-trycleargate.vercel.app-0f1522)](https://trycleargate.vercel.app/try.html) ![Bank attacks that reached the refund tool](https://img.shields.io/badge/bank_attacks_reaching_the_refund_tool-0_of_4_(stand--in)-138a5b)
+
 **A bank's platform team uses ClearGate to gate its voice support agent, five sub-agents that refund failed UPI payments, so every tool call passes through a customer-hosted AgntID runtime.**
 **AgntID controls used: Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile), Parameter-Level Policies (refund cap ₹1 to ₹5,000, destination account on file) and Intent-Based Controls, feeding one Runtime Access Decision per call.**
 **Before and after: stock moved ₹2,22,840 to accounts not on file across 8 attack calls; gated moved ₹0 across 15 (measured on the local stand-in of AgntID's decisions, labelled "not AgntID" in every record).**
