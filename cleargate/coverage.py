@@ -77,6 +77,11 @@ BANK_EXTRA = {
 SPOKEN_REPLAY = Path(__file__).resolve().parents[1] / "attacks" / "tts_replay.json"
 
 
+
+def _rel(path: Path) -> str:
+    """Repo-relative when inside the repo, absolute otherwise (records dir may be overridden)."""
+    return str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+
 def dotted(tool: str) -> str:
     return tool.replace("_", ".", 1) if "." not in tool else tool
 
@@ -277,7 +282,7 @@ def run_bank(target: str, policy_path: Path) -> tuple[str, list[dict[str, Any]],
             "args": deciding.get("args") or {}, "text": line, "owasp": "", "transcript": result["transcript"],
             "control": control, "rule": deciding.get("rule", ""), "detail": deciding.get("reason", ""),
             "unproven": False, "denial_step": deciding.get("denial_step", ""),
-            "record": str(Path(gated.get("record", "")).relative_to(ROOT)) if gated.get("record") else "",
+            "record": _rel(Path(gated["record"])) if gated.get("record") else "",
             "record_seq": deciding.get("seq"), "record_hash": hashes.get(deciding.get("seq"), ""),
             "verified": gated.get("verified", ""),
             "exercised": sorted({e.get("rule") for e in events if e["mode"] == "gated" and e.get("rule")}),
@@ -308,7 +313,7 @@ def sign_all(cases: list[dict[str, Any]], run_id: str, target: str, policy_rel: 
         entry = rec.append({"kind": "coverage-decision", "case_id": c["id"], "source": c["source"], "tool": c["tool"],
                             "args": c["args"], "class": c["class"], "control": c["control"], "rule": c["rule"],
                             "detail": c["detail"], "target": target})
-        c["record"] = str(path.relative_to(ROOT))
+        c["record"] = _rel(path)
         c["record_seq"] = entry["seq"]
         c["record_hash"] = entry["hash"]
     return path, verify_record(path)
@@ -323,7 +328,7 @@ def lineage_receipts() -> list[dict[str, Any]]:
             gap = nodes.get(r.get("gap"), {})
             out.append({"run": lin["run"], "rule": r["rule"], "why": r["why"], "gen": r["gen"], "status": r["status"],
                         "gap": r.get("gap"), "gap_tool": gap.get("tool"), "gap_args": gap.get("args"),
-                        "gap_text": gap.get("text"), "lineage": str(p.relative_to(ROOT))})
+                        "gap_text": gap.get("text"), "lineage": _rel(p)})
     return out
 
 
