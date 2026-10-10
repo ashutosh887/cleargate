@@ -35,3 +35,5 @@ policies/proposed-*
 dist/
 build/
 policies/evolved-*
+AGENT_BRIEF*.md
+*.pdf
