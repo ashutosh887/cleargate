@@ -2,7 +2,9 @@
 
 > ClearGate is an AgntID hackathon entry (10 Oct 2026). An agent team at a bank fixes a payments incident and answers the bank's support line. Every tool call goes through a customer-hosted AgntID runtime, which makes a Runtime Access Decision per call. The merge waits for the on-call engineer's spoken approval, bound to the SHA-256 digest of the exact merge arguments. Every decision lands in a hash-chained, Ed25519-signed record that `verify.py` checks offline. Tagline: "The agent acts. AgntID decides. The engineer signs."
 
-Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), which enforces `policy.yaml` the way the AgntID portal is configured and labels every decision "local-policy-stand-in (not AgntID)". Live AgntID numbers are marked as pending until measured. Do not read a stand-in number as a live AgntID result.
+Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), which enforces `policy.yaml` the way the AgntID portal is configured and labels every decision "local-policy-stand-in (not AgntID)". Runs through the AgntID runtime go in the README's "Stand-in numbers and live numbers" table, measured by `scripts/live_all.sh`. Do not read a stand-in number as a live AgntID result.
+
+Try it: https://trycleargate.vercel.app/try.html places a call to the bank agent. Pick a caller or type a line in English or Hinglish, and the page shows the stock and gated agents side by side with the decision, the rule and the rupees moved. It runs the same code as `cleargate bank --stub`, on the local stand-in.
 
 ## What it is
 
@@ -17,7 +19,7 @@ Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), wh
 - Real-world AgntID relevance (15%): the "Reason a bank would give" tables in README "Real-World AgntID Relevance" and Appendix A; `reason:` on every rule in `policy.yaml` (PCI DSS, DPDP, RBI mappings, as review evidence, not compliance claims).
 - Depth of AgntID usage (25%): `cleargate/agntid_enforcer.py`; `docs/AGNTID_IMPLEMENTATION.md`; `cleargate evolve` and the policy writer, framed as AgntID's Runtime Operator Workflow (Auto-Discover, Define Policies, Simulate & Test, Enforce at Runtime, Audit & Replay).
 - Technical execution and before/after proof (20%): `cleargate check --stub`; `python verify.py examples/stub-gated.jsonl`; `scripts/runtime_proof.py` (live only); README "Technical Execution & Before/After Proof".
-- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the site, https://trycleargate.vercel.app; the demo video.
+- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the site, https://trycleargate.vercel.app; the call page, https://trycleargate.vercel.app/try.html.
 
 ## Key files
 
@@ -58,14 +60,14 @@ All measured on 10 Oct 2026.
 
 - Incident team, one run of `cleargate check --stub` (local stand-in): tools visible at task start 49 stock vs 11 gated; GitHub tools 41 vs 7; tool-schema context about 3,045 vs 770 tokens; out-of-task calls that reached a tool 8 of 8 stock vs 0 of 7 gated; stock merged on its own, gated merged after approval (offline auto-approver, not a human); both signed records MATCH; verdict NO-GO vs GO.
 - Signed record: `python verify.py examples/stub-gated.jsonl` prints "MATCH: 30 records, sealed; chain intact, all signatures valid". Changing `"limit":5000` to `"limit":50` prints "MISMATCH at line 15 (seq 14): args_digest does not match the canonical arguments".
-- Bank calls, `CLEARGATE_LLM=scripted cleargate bank --demo all --stub` at 13:16 IST (local stand-in): attack calls that reached the refund tool, stock 4 of 4, gated 0 of 4. Call 5 (₹4,000 of a failed ₹12,500 to "my other account") is now blocked by `bank-destination-allowlist`. With `PAYEE_CHECK=on` the bank refused all 4 stock attempts, so ₹0 moved in both runs. With `PAYEE_CHECK=off`, stock moved ₹1,30,000 to accounts not on file and gated ₹0. All 20 signed records MATCH.
+- Bank calls, `CLEARGATE_LLM=scripted cleargate bank --demo all --stub` at 13:39 IST (local stand-in): attack calls that reached the refund tool, stock 4 of 4, gated 0 of 4. Call 5 (₹4,000 of a failed ₹12,500 to "my other account") is now blocked by `bank-destination-allowlist`. With `PAYEE_CHECK=on` the bank refused all 4 stock attempts, so ₹0 moved in both runs. With `PAYEE_CHECK=off`, stock moved ₹1,30,000 to accounts not on file and gated ₹0. All 20 signed records MATCH.
 - The rule the caller forced, `PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7` (local stand-in): before `bank-destination-allowlist` existed (run 20261010-130330), bargaining callers got the gated agent to move ₹15,580 to accounts not on file across 12 attack calls by asking under the ₹5,000 cap (for example the "branch" caller: ₹48,000, then ₹4,900, then ₹2,000 paid on turn 3). One Parameter-Level Policy rule, whose reason cites that run, closed it: gated ₹0 across 15 attack calls (run 20261010-131644). Stock moved ₹2,22,840 across 8 attack calls in both runs.
-- Policy fuzzer, `cleargate evolve --target stub`, seed 7 (local stand-in): against the earlier raw-string `main` rule, generation 2 found 5 spellings that got through (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). After normalising the ref, 0 gaps in 585 cases over 6 generations, and the real task passed.
+- Policy fuzzer, `cleargate evolve --target stub`, seed 7 (local stand-in): against the earlier raw-string `main` rule, generation 2 found 5 spellings that got through (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). After normalising the ref, 0 gaps in 585 cases over 6 generations, and the real task passed. All-day totals at 13:43 IST (`cleargate evolve --totals`): 54,359 cases across 516 generations in 86 runs, 0 gaps.
 - Attack suite on the stock stub MCP servers: 16 of 20 reached a tool, 2 simulated, 2 not run.
 - Policy writer (local stand-in): 19 of 20 attacks blocked, 0 of 13 needed calls broken, 7 of 7 out-of-task calls stopped.
 - Coverage matrix (local stand-in): 85 cases; stock 67 of 85 reached a tool; 11 cases can only be stopped by AgntID's intent check, so the stand-in cannot prove them.
 - CI: PR #3 loosens the policy so the fix agent merges without approval; the gate fails with "NO-GO: merged by the agent with no human approval".
-- Live AgntID runtime: pending. Every number above is from the local stand-in, labelled "not AgntID".
+- Every number above is from the local stand-in, labelled "not AgntID". Live AgntID runs are listed separately in the README's live table.
 
 ## Limitations
 
