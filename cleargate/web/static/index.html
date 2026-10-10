@@ -32,7 +32,7 @@
   /* header */
   header { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
   header h1 { margin: 0; white-space: nowrap; font: 800 28px/1 var(--sans); font-stretch: 112%; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
-  header h1 .mark { width: 26px; height: 26px; display: inline-block; flex: none; }
+  header h1 .mark { display: inline-block; flex: none; font: 800 15px/1 var(--sans); font-stretch: 100%; letter-spacing: .04em; color: #ffb547; border: 2.5px solid currentColor; border-radius: 4px; padding: 4px 5px 3px; transform: rotate(-4deg); }
   header h1 span { color: var(--muted); font-weight: 500; font-size: 18px; font-stretch: 100%; letter-spacing: 0; }
   header .line { color: var(--dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .spacer { flex: 1; }
@@ -335,7 +335,7 @@
 </head>
 <body>
 <header>
-  <h1><svg class="mark" viewBox="0 0 26 26" aria-hidden="true"><rect x="2" y="3" width="4" height="21" rx="1" fill="#eef1f6"/><rect x="20" y="3" width="4" height="21" rx="1" fill="#eef1f6"/><rect x="6" y="9" width="14" height="4" fill="#ff5d5d"/><rect x="6" y="15" width="14" height="4" fill="#3ddc97"/></svg>ClearGate <span>on-call agents, gated by AgntID</span></h1>
+  <h1><span class="mark" aria-hidden="true">CG</span>ClearGate <span>on-call agents, gated by AgntID</span></h1>
   <span class="spacer"></span>
   <span id="brain" class="line" title="Which model drives the agents"></span>
   <span id="enforcer" class="badge standin" title="Which enforcer decides the right-hand pane">checking enforcer…</span>

@@ -173,3 +173,5 @@ td.pending { color: var(--escalate-dk); font-family: var(--mono); font-size: var
   .table-wrap table { min-width: 560px; }
 }
 @media (max-width: 640px) { .table-wrap table.deps { min-width: 0; } .deps td:first-child { white-space: normal; width: 40%; } }
+
+.brand .mark { display: inline-block; font: var(--w-head) var(--s-0)/1 var(--sans); letter-spacing: .04em; color: var(--escalate); border: 2.5px solid currentColor; border-radius: 4px; padding: 4px 5px 3px; rotate: -4deg; }
