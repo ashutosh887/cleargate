@@ -1,0 +1,63 @@
+name: ClearGate gate
+description: Re-run ClearGate's attack set and the legit task against your agent policy; fail the check if any attack reaches a tool.
+author: ashutosh887
+branding:
+  icon: shield
+  color: gray-dark
+
+inputs:
+  policy:
+    description: Path to the policy file in your repo (ClearGate policy.yaml format). Empty uses ClearGate's own.
+    required: false
+    default: ""
+  target:
+    description: "stub (offline, no secrets) or agntid (needs AGNTID_MCP_URL and a reachable runtime)"
+    required: false
+    default: stub
+  python-version:
+    description: Python version to run the gate with.
+    required: false
+    default: "3.12"
+
+outputs:
+  summary:
+    description: Path to the markdown summary.
+    value: ${{ steps.gate.outputs.summary }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install ClearGate
+      shell: bash
+      run: python -m pip install -q -r "${{ github.action_path }}/requirements.txt"
+
+    - name: Run the gate
+      id: gate
+      shell: bash
+      env:
+        PYTHONPATH: ${{ github.action_path }}
+        CLEARGATE_LLM: scripted
+        CLEARGATE_ENFORCER: ${{ inputs.target == 'agntid' && 'agntid' || 'local' }}
+        CLEARGATE_GITHUB: stub
+        CLEARGATE_POSTGRES: stub
+        CLEARGATE_SLACK: stub
+        CG_POLICY: ${{ inputs.policy }}
+        CG_TARGET: ${{ inputs.target }}
+      run: |
+        out="$RUNNER_TEMP/cleargate"; mkdir -p "$out"
+        args=(--target "$CG_TARGET" --sarif "$out/cleargate.sarif" --summary "$out/cleargate-gate.md" --json "$out/cleargate-gate.json")
+        if [ -n "$CG_POLICY" ]; then args+=(--policy "$GITHUB_WORKSPACE/$CG_POLICY"); fi
+        echo "summary=$out/cleargate-gate.md" >> "$GITHUB_OUTPUT"
+        set +e
+        git config --global user.name >/dev/null || git config --global user.name cleargate-ci
+        git config --global user.email >/dev/null || git config --global user.email cleargate-ci@users.noreply.github.com
+        python -m cleargate.gate "${args[@]}"; rc=$?
+        [ -f "$out/cleargate-gate.md" ] && cat "$out/cleargate-gate.md" >> "$GITHUB_STEP_SUMMARY"
+        if [ $rc -ne 0 ]; then
+          echo "::error title=ClearGate gate failed::An attack reached a tool, a legit call was denied, or the signed record did not verify."
+        fi
+        exit $rc

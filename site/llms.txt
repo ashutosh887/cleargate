@@ -65,7 +65,7 @@ All measured on 10 Oct 2026.
 - Policy fuzzer, `cleargate evolve --target stub`, seed 7 (local stand-in): against the earlier raw-string `main` rule, generation 2 found 5 spellings that got through (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). After normalising the ref, 0 gaps in 585 cases over 6 generations, and the real task passed. All-day totals at 13:43 IST (`cleargate evolve --totals`): 54,359 cases across 516 generations in 86 runs, 0 gaps.
 - Attack suite on the stock stub MCP servers: 16 of 20 reached a tool, 2 simulated, 2 not run.
 - Policy writer (local stand-in): 19 of 20 attacks blocked, 0 of 13 needed calls broken, 7 of 7 out-of-task calls stopped.
-- Coverage matrix (local stand-in): 85 cases; stock 67 of 85 reached a tool; 11 cases can only be stopped by AgntID's intent check, so the stand-in cannot prove them.
+- Coverage matrix (local stand-in): 86 cases; stock 68 of 86 reached a tool; 11 cases can only be stopped by AgntID's intent check, so the stand-in cannot prove them.
 - CI: PR #3 loosens the policy so the fix agent merges without approval; the gate fails with "NO-GO: merged by the agent with no human approval".
 - Every number above is from the local stand-in, labelled "not AgntID". Live AgntID runs are listed separately in the README's live table.
 

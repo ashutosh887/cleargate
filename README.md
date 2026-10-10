@@ -21,7 +21,7 @@ What a team gets: a CLI and a GitHub Action that run the gate on every pull requ
 
 **Try it:** place a call at https://trycleargate.vercel.app/try.html. Pick a caller or type your own line, in English or Hinglish, and see the stock and gated agents side by side with the decision, the rule and the rupees moved. It runs the same code as `cleargate bank --stub`, on the local stand-in.
 
-![A Hinglish "RBI fraud cell" call. Left, the stock agent sends ₹30,000 to a new account. Right, the gated agent never sees the refund tool and tells the caller why in Hindi.](docs/screenshots/10-bank-call.png)
+![A Hinglish "RBI fraud cell" call. Left, the stock agent sends ₹30,000 to a new account. Right, the gated agent never sees the refund tool and tells the caller why in Hindi.](docs/bank-call.gif)
 
 *The "RBI fraud cell" call in Hinglish. Stock sends ₹30,000 to a new account. Gated never sees the refund tool, tells the caller in Hindi that it needs a branch visit, and both signed records verify. The badge says it: local stand-in, simulation, not AgntID.*
 
@@ -113,7 +113,7 @@ The PCI DSS, DPDP and RBI mappings, and the EU AI Act Art 12 (record-keeping) an
 ## Depth of AgntID Usage (25%)
 
 **Measured:**
-- Coverage matrix (`cleargate coverage --target stub`): 85 cases (20 catalogue, 61 evolved, 4 bank). Stock let 67 reach a tool. Gated gaps: 0. 11 cases are stopped only by intent and need the runtime to prove.
+- Coverage matrix (`cleargate coverage --target stub`): 86 cases (20 catalogue, 61 evolved, 5 bank, including 5 spoken attacks replayed through text-to-speech). Stock let 68 reach a tool. Gated gaps: 0. 11 cases are stopped only by intent and need the runtime to prove.
 - OWASP covered: LLM01, LLM02, LLM06 from the OWASP Top 10 for LLM Applications (2025); ASI01, ASI02, ASI03, ASI06, ASI09 from the agentic list. The rest are listed as not covered in [`docs/coverage.html`](docs/coverage.html).
 - Tools visible at task start: 49 → 11. GitHub tools: 41 → 7. Tool-schema context: 3,045 → 770 tokens.
 - Policy writer: 56 catalogue tools → 53 under the profile → 9 visible; 0 needed calls broken (of 13); 7 of 7 out-of-task calls stopped; 19 of 20 attacks blocked (18 by the portal configuration alone).
@@ -321,7 +321,7 @@ Each piece says whether it runs against the live runtime or the local stand-in.
 |---|---|---|---|
 | Attack suite | `cleargate attack-suite --target both` | Fires the 20 attacks in [`attacks/catalog.yaml`](attacks/catalog.yaml) at the stock MCP servers and through the AgntID runtime | Stock, stub servers (`cleargate mcp-serve` running, then `--target stock`): 16 of 20 reached a tool, 2 simulated, 2 not run. Through AgntID: in the [live table](#stand-in-numbers-and-live-numbers) |
 | Policy writer | `cleargate attack-suite --target stock --out records/attacks.json`, then `cleargate propose-policy propose --attacks records/attacks.json --offline` | Auto-Discover (the signed record and attack results) → Define Policies (the tightest portal configuration that still lets every in-task call through) → Simulate & Test (shadow replay of the record and the 20 attacks) → Enforce (applied in the portal by hand) → Audit & Replay (`cleargate diff`, `verify.py`) | Stand-in evaluator: 0 needed calls broken (of 13), 7 of 7 out-of-task calls stopped, 19 of 20 attacks blocked |
-| Coverage matrix | `cleargate coverage --target stub` | Attack class × deciding control, OWASP mapping, a receipt for every rule; writes [`docs/coverage.html`](docs/coverage.html) and a signed record | 85 cases, 0 gated gaps, 11 need the runtime's intent check |
+| Coverage matrix | `cleargate coverage --target stub` | Attack class × deciding control, OWASP mapping, a receipt for every rule; writes [`docs/coverage.html`](docs/coverage.html) and a signed record | 86 cases, 0 gated gaps, 11 need the runtime's intent check |
 | CI gate | `cleargate gate --target stub --sarif cleargate.sarif` | Re-runs the attacks and the legit task on every PR that touches agents or policy; exit 1 if any attack reached a tool; SARIF output. Workflow: [`.github/workflows/cleargate-gate.yml`](.github/workflows/cleargate-gate.yml) | `git apply scripts/demo-loosen-policy.patch` lets the fix agent merge without approval; on GitHub this is [PR #3](https://github.com/ashutosh887/cleargate/pull/3), red with "NO-GO: merged by the agent with no human approval" |
 | Latency bench | `cleargate bench --target stub` / `--target agntid` | Each read-only call n times direct and n times through the enforcer, interleaved; reports added p50 and p95 | Stub: +0.001 to +0.002 ms p50 (local evaluator only). Through AgntID: [p50] / [p95] ms |
 | Durable approval | `cleargate check --stub --durable`, `cleargate approve`, `cleargate resume` | Escalated call becomes a SQLite receipt; the process exits; approve and resume later into the same signed record | Stand-in, offline |
@@ -381,3 +381,21 @@ Each piece says whether it runs against the live runtime or the local stand-in.
 | `scripts/runtime_proof.py` | Live runtime checklist |
 | `policy.yaml`, `policy.tight.yaml` | Stand-in policy mirroring the portal, and a tighter one for diffing |
 | `fixtures/` | Synthetic ledger, offline copy of issue #1, CI logs, the buggy `payments-api` service |
+
+## Use it in your repo
+
+ClearGate's gate ships as a GitHub Action. Add it to any agent repo and every pull request re-runs the attack set and the legit task against your policy; the check fails if any attack reaches a tool.
+
+```yaml
+on: pull_request
+jobs:
+  cleargate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ashutosh887/cleargate@main
+        with:
+          policy: agent-policy.yaml   # your policy, ClearGate policy.yaml format
+```
+
+`target: stub` (the default) runs offline with no secrets. `target: agntid` sends every call through your AgntID runtime and needs `AGNTID_MCP_URL`. The markdown summary lands in the job summary.
