@@ -6,6 +6,8 @@
 
 **The agent acts. AgntID decides. The engineer signs.**
 
+Where it stands: everything is built, and every number below was measured on the local stand-in of AgntID's decisions, labelled "not AgntID" in each record. The AgntID runtime is set up on our machine but no live run has completed yet; `scripts/live_all.sh` runs them and fills the [live table](#stand-in-numbers-and-live-numbers).
+
 It is for the platform or security team that has to sign off before an agent with real tools goes to production. A prompt that says "don't" proves nothing. A record of what the agent tried, what reached a tool and who approved it does.
 
 ## What it does
@@ -174,7 +176,7 @@ The second team works the bank's payments incident. Its API refunds some orders 
 
 **Proof:** rule `bank-destination-allowlist` in [`policy.yaml`](policy.yaml), whose `reason:` names the campaign run that forced it; the campaign table in [Appendix B](#appendix-b-the-bank-voice-support-agent).
 
-Every rule carries the reason a bank would give, because the event asked for policies with real-world reasons, not policies for their own sake:
+Every rule carries the reason a bank would give:
 
 | Rule or control | Reason a bank would give |
 |---|---|
