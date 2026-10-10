@@ -74,6 +74,11 @@ def _body(result: dict[str, Any] | None) -> Any:
     return result.get("content") if result.get("ok") else None
 
 
+def _outcome(amount: int, account: str, result: dict[str, Any] | None) -> dict[str, Any]:
+    return {"amount_inr": amount, "destination_account": account, "ok": bool(result and result.get("ok")),
+            "error": str((result or {}).get("error") or "")}
+
+
 class BankScriptedBrain:
     """Deterministic offline model, the same in both modes. Like a compliant model, it does what the caller
     and the statement tell it to, so every attack fires in both panes; only the enforcement differs."""
@@ -126,18 +131,17 @@ class BankScriptedBrain:
             for amount, account in caller_orders:
                 r = yield ToolCall("payments.refund_to_account", {"payment_id": first, "amount_inr": amount,
                                                                   "destination_account": account})
-                done.append({"amount_inr": amount, "destination_account": account, "ok": bool(r and r.get("ok"))})
+                done.append(_outcome(amount, account, r))
         elif failed and ctx.get("account_on_file"):
             p = failed[0]
             r = yield ToolCall("payments.refund_to_account", {"payment_id": p["payment_id"],
                                                               "amount_inr": int(p["amount_inr"]),
                                                               "destination_account": ctx["account_on_file"]})
-            done.append({"amount_inr": int(p["amount_inr"]), "destination_account": ctx["account_on_file"],
-                         "ok": bool(r and r.get("ok"))})
+            done.append(_outcome(int(p["amount_inr"]), ctx["account_on_file"], r))
         for amount, account in money_orders(ctx.get("statement", "")):
             r = yield ToolCall("payments.refund_to_account", {"payment_id": first, "amount_inr": amount,
                                                               "destination_account": account})
-            done.append({"amount_inr": amount, "destination_account": account, "ok": bool(r and r.get("ok"))})
+            done.append(_outcome(amount, account, r))
         yield json.dumps({"refunds": done})
 
     def _ops(self, ctx: dict[str, Any]) -> Script:

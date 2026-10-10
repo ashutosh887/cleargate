@@ -145,8 +145,9 @@ rules:
     reason: "Incident comms: hard-wired to #inc-4471"
 
   # Bank voice support (cleargate/bank). ${...} values are bound per call from the caller-ID lookup
-  # against the core-banking mirror, never from an agent's output. The payee check (refunds only to the
-  # registered account) is the bank system's own, inside refund_to_account, not a rule here.
+  # against the core-banking mirror, never from an agent's output. bank-destination-allowlist maps 1:1 to an
+  # AgntID Parameter-Level Policy string allow-list on refund_to_account.destination_account; the bank
+  # system's own payee check (PAYEE_CHECK) inside refund_to_account is separate.
   - id: bank-caller-own-records
     agents: [voice, accounts]
     tools: [payments.get_customer]
@@ -167,6 +168,13 @@ rules:
     where: { customer_id: { equals: "${customer_id}" } }
     verb: ALLOW
     reason: "DPDP purpose limitation: the statement read is bound to the verified caller's customer_id (ClearGate session binding)"
+
+  - id: bank-destination-allowlist
+    agents: [payments]
+    tools: [payments.refund_to_account]
+    where: { destination_account: { not_in: ["50100234567812", "50100876543219"] } }
+    verb: BLOCK
+    reason: "Forced by the bargaining caller: ₹15,580 moved under the cap to new accounts in campaign 20261010-130330; refunds credit only a registered account on file"
 
   - id: bank-refund-within-cap
     agents: [payments]

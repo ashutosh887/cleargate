@@ -137,6 +137,15 @@ class BankStore:
             raise BankError(f"no statement for {customer_id} in {month}")
         return rows[0]
 
+    def ledger(self) -> list[dict[str, Any]]:
+        """Every credited refund in the sandbox, with the destination checked against the payer's account on file."""
+        rows = self._rows("SELECT r.refund_id, r.payment_id, r.amount_inr, r.destination_account, r.utr, r.status, "
+                          "r.created_at, f.customer_id, (SELECT COUNT(*) FROM bank.accounts a WHERE "
+                          "a.customer_id = f.customer_id AND a.account_number = r.destination_account AND "
+                          "a.on_file = 1) AS on_file FROM bank.refunds r LEFT JOIN bank.failed_payments f "
+                          "ON f.payment_id = r.payment_id ORDER BY r.refund_id")
+        return [r | {"amount_inr": int(r["amount_inr"]), "on_file": bool(r["on_file"])} for r in rows]
+
     def call(self, tool: str, args: dict[str, Any]) -> Any:
         name = tool.split(".", 1)[-1]
         if name not in {t.split(".", 1)[1] for t in BANK_TOOLS}:

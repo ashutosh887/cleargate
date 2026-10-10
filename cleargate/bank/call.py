@@ -17,7 +17,7 @@ from typing import Any
 
 from cleargate.agents.loop import Agent
 from cleargate.approval import ApprovalBroker
-from cleargate.bank.enforce import BANK_SYSTEM, REFUND, BankEnforcer, BankGate, Session, bank_policy
+from cleargate.bank.enforce import BANK_SYSTEM, REFUND, BankEnforcer, BankGate, Session, bank_policy, bank_section
 from cleargate.bank.store import PAYEE_ERROR, BankLocal, BankSqlite, BankStore
 from cleargate.bank.team import SYSTEMS, BankScriptedBrain, month_in
 from cleargate.bus import EventBus
@@ -128,7 +128,27 @@ def handle(gate: BaseGate, brain: Any, session: Session, transcript: str) -> dic
     return {"customer_id": cid, "refunds": refunds, "statement_read": bool(statement), "summary": summary}
 
 
-def reply_for(session: Session, outcome: dict[str, Any], language: str) -> str:
+REFUSALS = {
+    "new_account": ("I can't send money to a new account over the phone; that needs a branch visit.",
+                    "मैं फ़ोन पर किसी नए खाते में पैसे नहीं भेज सकती; इसके लिए आपको ब्रांच आना होगा।"),
+    "over_cap": ("I can't refund more than ₹{cap:,} on a call without a second officer's approval, so I haven't sent it.",
+                 "कॉल पर ₹{cap:,} से ज़्यादा का रिफंड दूसरे अधिकारी की मंज़ूरी के बिना नहीं हो सकता, इसलिए मैंने इसे नहीं भेजा।"),
+    "over_failed": ("I can only refund the amount of your failed payment, not more.",
+                    "मैं सिर्फ़ असफल भुगतान की रकम ही वापस कर सकती हूँ, उससे ज़्यादा नहीं।"),
+    "flagged": ("I've flagged this to our operations team.", "मैंने यह हमारी ऑपरेशंस टीम को बता दिया है।"),
+}
+
+
+def refusal_reason(session: Session, refund: dict[str, Any], cap: int = 5000) -> str:
+    """Why a refund did not go through, in the terms the caller can act on."""
+    if str(refund.get("destination_account")) != session.account_on_file or session.intent != "failed_payment":
+        return "new_account"
+    if int(refund.get("amount_inr") or 0) > cap:
+        return "over_cap"
+    return "over_failed"
+
+
+def reply_for(session: Session, outcome: dict[str, Any], language: str, cap: int = 5000) -> str:
     on_file = session.account_on_file
     name = (session.customer.get("name") or "").split(" ")[0]
     moved = [r for r in outcome["refunds"] if r.get("ok")]
@@ -146,14 +166,32 @@ def reply_for(session: Session, outcome: dict[str, Any], language: str) -> str:
         parts.append(f"₹{int(r['amount_inr']):,} खाता {r['destination_account']} में भेज दिए गए हैं।" if hi else
                      f"Done: ₹{int(r['amount_inr']):,} has been sent to account {r['destination_account']}.")
     if refused:
-        parts.append("माफ़ कीजिए, मैं कॉल पर किसी नए खाते में पैसे नहीं भेज सकती। रिफंड सिर्फ़ रजिस्टर्ड खाते में जाता है, "
-                     "और मैंने यह हमारी ऑपरेशंस टीम को बता दिया है।" if hi else
-                     "I'm sorry, I can't move money to a new account over a call. Refunds only go to the account "
-                     "on file, and I've flagged this to our operations team.")
+        reasons = dict.fromkeys(refusal_reason(session, r, cap) for r in refused)
+        parts.extend(REFUSALS[k][hi].format(cap=cap) for k in [*reasons, "flagged"])
     if not parts:
         parts.append("मुझे आपके नाम पर कोई असफल भुगतान नहीं मिला। क्या आप और जानकारी दे सकते हैं?" if hi else
                      "I couldn't find a failed payment to fix. Could you tell me a little more?")
     return " ".join(parts)
+
+
+def sandbox_ledger(client: Any, history: list[dict[str, Any]], run_id: str, mode: str,
+                   session: Session) -> list[dict[str, Any]]:
+    """Money that actually left the sandbox bank in this mode: the bank.refunds table when the store is in
+    process, otherwise the executed refund calls."""
+    store = getattr(client, "store", None)
+    if isinstance(store, BankStore):
+        return [r | {"source": "bank.refunds"} for r in store.ledger()]
+    rows = []
+    for e in history:
+        if (e.get("type") == "decision" and e.get("run_id") == run_id and e.get("mode") == mode
+                and e.get("tool") == REFUND and e.get("executed")):
+            a = e.get("args") or {}
+            rows.append({"payment_id": a.get("payment_id"), "amount_inr": int(a.get("amount_inr") or 0),
+                         "destination_account": str(a.get("destination_account")),
+                         "customer_id": session.customer_id,
+                         "on_file": str(a.get("destination_account")) == session.account_on_file,
+                         "source": "executed refund_to_account calls"})
+    return rows
 
 
 def tally(history: list[dict[str, Any]], mode: str, session: Session, run_id: str) -> dict[str, Any]:
@@ -231,16 +269,26 @@ class Call:
             outcome = handle(gate, make_brain(self.settings), session, transcript)
         except Exception as exc:
             outcome = {"refunds": [], "error": f"{type(exc).__name__}: {exc}", "summary": ""}
-        reply = reply_for(session, outcome, language)
+        reply = reply_for(session, outcome, language, int(bank_section(policy).get("refund_cap_inr") or 5000))
         counts = tally(self.bus.history, mode, session, run_id)
+        ledger = sandbox_ledger(client, self.bus.history, run_id, mode, session)
+        self._append_ledger(run_id, mode, phone, ledger)
         verified = verify_record(path)
         result = {"mode": mode, "source": source, "intent": session.intent, "customer_id": session.customer_id,
                   "account_on_file": session.account_on_file, "reply_text": reply, "counts": counts,
                   "record": str(path), "verified": verified, "ops_summary": outcome.get("summary", ""),
-                  "error": outcome.get("error", "")}
+                  "error": outcome.get("error", ""), "ledger": ledger,
+                  "moved_off_file_inr": sum(r["amount_inr"] for r in ledger if not r["on_file"])}
         self.bus.publish({"type": "mode_done", "mode": mode, "subject": "bank", "counts": counts,
                           "verified": verified, "record": str(path), "reply_text": reply})
         return result
+
+    def _append_ledger(self, run_id: str, mode: str, phone: str, rows: list[dict[str, Any]]) -> None:
+        path = self.settings.state_dir / "bank" / "ledger.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps({"run_id": run_id, "mode": mode, "caller": phone, **row}, ensure_ascii=False) + "\n")
 
 
 def run_call(text_or_audio: str | bytes, mode: str = "both", phone: str = DEFAULT_PHONE, stub: bool = True,
@@ -310,12 +358,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--audio", type=Path, help="a recorded caller clip (Sarvam STT)")
     parser.add_argument("--phone", default=DEFAULT_PHONE, help="caller ID")
     parser.add_argument("--mode", choices=["both", "stock", "gated"], default="both")
-    parser.add_argument("--approve", choices=["auto", "cli"], default="auto")
+    parser.add_argument("--approve", choices=["auto", "cli", "none"], default=None,
+                        help="checker for escalations (default auto; --campaign defaults to none, unattended)")
     parser.add_argument("--stub", action="store_true", help="in-process SQLite bank, no MCP servers")
     parser.add_argument("--speak", action="store_true", help="synthesise the reply with Sarvam TTS (costs credits)")
     parser.add_argument("--save-audio", type=Path, help="write the reply WAV here")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--campaign", action="store_true",
+                        help="every bank attack line and caller persona, stock vs gated, with the sandbox ledger")
+    parser.add_argument("--seed", type=int, default=7, help="caller persona seed (--campaign)")
+    parser.add_argument("--llm-caller", action="store_true",
+                        help="an LLM plays the caller personas (CLEARGATE_LLM=openai); falls back to the script")
+    parser.add_argument("--caller-audio", action="store_true",
+                        help="render two caller turns to docs/audio/ with Sarvam TTS (two requests)")
     args = parser.parse_args(argv)
+    if args.campaign:
+        from cleargate.bank.campaign import main as campaign
+
+        return campaign(args.stub, args.seed, args.approve or "none", args.llm_caller, args.caller_audio, args.json)
     lines: list[tuple[str | bytes, str]]
     if args.audio:
         lines = [(args.audio.read_bytes(), args.phone)]
@@ -326,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         lines = [(args.say, args.phone)]
     else:
         parser.error("give --say, --demo or --audio")
-    call = Call(approvals=args.approve, stub=args.stub)
+    call = Call(approvals=args.approve if args.approve in ("auto", "cli") else "auto", stub=args.stub)
     worst = 0
     for line, phone in lines:
         result = run_call(line, args.mode, phone, stub=args.stub, speak=args.speak, call=call,
