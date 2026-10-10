@@ -181,3 +181,41 @@ td.pending { color: var(--escalate-dk); font-family: var(--mono); font-size: var
 @media (max-width: 640px) { .deps td:first-child { white-space: normal; width: 40%; } }
 
 .brand .mark { display: inline-block; font: var(--w-head) var(--s-0)/1 var(--sans); letter-spacing: .04em; color: var(--escalate); border: 2.5px solid currentColor; border-radius: 4px; padding: 4px 5px 3px; rotate: -4deg; }
+
+/* try a call */
+.dial { margin: 28px 0 36px; padding: 22px 24px; background: var(--paper-hi); border: 1px solid var(--rule); border-radius: 3px; }
+.presets { border: 0; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.presets legend { font-weight: var(--w-strong); font-size: var(--s-1); margin-bottom: 10px; padding: 0; }
+.presets button { font: var(--w-body) var(--s-1)/1.2 var(--sans); padding: 9px 12px; background: transparent; color: var(--text); border: 1.5px solid var(--rule-ink); border-radius: 3px; cursor: pointer; }
+.presets button:hover, .presets button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.said-label { display: block; font-weight: var(--w-strong); font-size: var(--s-1); margin-bottom: 8px; }
+.dial textarea { width: 100%; font: var(--w-body) var(--s-2)/1.5 var(--sans); padding: 12px 14px; border: 2px solid var(--ink); border-radius: 3px; background: #fff; color: var(--text); resize: vertical; }
+.dial-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+.dial-row .fine { margin: 0; }
+.dial-actions { display: flex; gap: 8px; align-items: center; }
+.dial-actions select { font: var(--w-body) var(--s-1) var(--sans); padding: 12px 8px; border: 2px solid var(--ink); border-radius: 3px; background: transparent; }
+.dial .btn { cursor: pointer; }
+.dial .btn:disabled { opacity: .5; cursor: wait; }
+#status { margin: 12px 0 0; min-height: 1.4em; }
+.duel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; margin-bottom: 36px; scroll-margin-top: 16px; }
+.pane { background: var(--ink); color: #d5dce7; border-radius: 4px; padding: 20px 22px; }
+.pane h2 { font-size: var(--s-3); margin: 0 0 14px; color: #fff; }
+.pane .fine { color: var(--muted-ink); margin: 14px 0 0; }
+.moved { display: flex; flex-direction: column; gap: 2px; margin: 0 0 12px; }
+.moved-label { font-size: var(--s-0); color: var(--muted-ink); text-transform: uppercase; letter-spacing: .06em; }
+.moved-fig { font: var(--w-strong) var(--s-5)/1 var(--mono); letter-spacing: -.03em; }
+.moved-fig.bad { color: var(--block-ink); } .moved-fig.good { color: var(--allow-ink); }
+.reply { margin: 0 0 16px; padding: 10px 14px; border-left: 3px solid var(--muted-ink); font-size: var(--s-1); color: #eef1f6; }
+.steps { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule-ink); }
+.steps li { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rule-ink); align-items: start; }
+.steps .stamp { font-size: var(--s-0); text-align: center; justify-self: start; }
+.steps .s-allow { color: var(--allow-ink); } .steps .s-narrow { color: #8fb8ff; }
+.steps .s-none { color: var(--muted-ink); border-style: dashed; }
+.steps p { margin: 0; font-size: var(--s-0); line-height: 1.5; max-width: none; }
+.steps code { background: rgba(255, 255, 255, .08); color: #fff; }
+.step-agent { color: var(--muted-ink); }
+.step-args { font-family: var(--mono); color: var(--muted-ink); overflow-wrap: anywhere; }
+.step-why { color: #d5dce7; } .step-why.bad { color: var(--block-ink); }
+.step-sim { color: var(--escalate); }
+@media (max-width: 860px) { .duel { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .dial { padding: 18px 16px; } .steps li { grid-template-columns: minmax(0, 1fr); gap: 6px; } }

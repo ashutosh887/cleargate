@@ -1,0 +1,5 @@
+cryptography
+httpx
+pyyaml
+rich
+click

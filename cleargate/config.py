@@ -52,5 +52,5 @@ class Settings:
     slack_approval_channel: str = field(default_factory=lambda: _env("SLACK_APPROVAL_CHANNEL", "#inc-4471"))
     slack_signing_secret: str = field(default_factory=lambda: _env("SLACK_SIGNING_SECRET"))
     policy_path: Path = field(default_factory=lambda: Path(_env("CLEARGATE_POLICY", str(ROOT / "policy.yaml"))))
-    records_dir: Path = ROOT / "records"
-    state_dir: Path = ROOT / ".cleargate"
+    records_dir: Path = field(default_factory=lambda: Path(_env("CLEARGATE_RECORDS_DIR", str(ROOT / "records"))))
+    state_dir: Path = field(default_factory=lambda: Path(_env("CLEARGATE_STATE_DIR", str(ROOT / ".cleargate"))))
