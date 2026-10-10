@@ -1,6 +1,6 @@
 # Running the demo
 
-ClearGate gates any agent that takes real actions. The demo uses two worked examples: the bank voice agent (`/bank`) and the payments incident team. Without installing anything, anyone can place a typed or spoken call at https://trycleargate.vercel.app/try.html (local stand-in).
+ClearGate gates any agent that takes real actions. The demo uses two worked examples: the bank voice agent (`/bank`) and the payments incident team. Without installing anything, anyone can place a typed or spoken call at https://trycleargate.vercel.app/try (local stand-in).
 
 Three levels, from no dependencies to the full live run. If a level fails on stage, drop to the next one down.
 
@@ -93,7 +93,7 @@ Say on stage: "This is the offline stand-in, labelled 'not AgntID'. It mirrors t
 
 - Re-run a saved incident run's recorded calls: `cleargate replay records/<run>-gated.jsonl` (the web UI also has a replay action, `/api/replay`, key R). For the bank line, re-run `cleargate bank --demo branch --stub`; it is deterministic. `cleargate replay` does not bind the bank call's session, so it is not used on `bank-*.jsonl` records.
 - Verify it: `python verify.py records/<run>-gated.jsonl`.
-- Place the same calls on https://trycleargate.vercel.app/try.html, which runs the stub bank agent and shows each pane's signed-record check.
+- Place the same calls on https://trycleargate.vercel.app/try, which runs the stub bank agent and shows each pane's signed-record check.
 
 ## Troubleshooting
 

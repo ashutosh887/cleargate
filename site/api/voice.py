@@ -101,7 +101,10 @@ class handler(BaseHTTPRequestHandler):
         voice = SarvamVoice(timeout=12.0)
         if not voice.enabled:
             return self._send(503, {"error": "Voice is off on this deployment. Type the caller line instead."})
-        size = int(self.headers.get("Content-Length") or 0)
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            size = 0
         if size <= 0:
             return self._send(400, {"error": "Send the recorded audio as the request body."})
         if size > MAX_BYTES:
@@ -123,11 +126,13 @@ class handler(BaseHTTPRequestHandler):
             return self._send(200, spoken_turn(audio, content_type, phone, voice))
         except VoiceUnavailable as exc:
             msg = str(exc)
-            if "SARVAM" in msg or "api" in msg.lower():
+            print(f"voice: {msg[:300]}", file=sys.stderr)
+            if not msg.startswith("No speech heard"):  # never echo upstream errors or response bodies
                 msg = "The speech service didn't answer. Type the caller line instead."
             return self._send(502, {"error": msg})
         except Exception as exc:  # the page shows the error instead of a blank pane
-            return self._send(500, {"error": f"{type(exc).__name__}"})
+            print(f"voice: {type(exc).__name__}: {str(exc)[:300]}", file=sys.stderr)
+            return self._send(500, {"error": "The call failed on the server. Try again."})
 
     def do_GET(self) -> None:
         self._send(405, {"error": "POST recorded caller audio to this endpoint."})

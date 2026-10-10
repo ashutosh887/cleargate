@@ -48,6 +48,8 @@ def verify(path: Path, pubkey_path: Path) -> tuple[bool, str]:
             entry = json.loads(line)
         except json.JSONDecodeError as exc:
             return False, f"MISMATCH at line {number}: not JSON ({exc})"
+        if not isinstance(entry, dict):
+            return False, f"MISMATCH at line {number}: not a record object"
         where = f"line {number} (seq {entry.get('seq')})"
         if entry.get("seq") != number - 1:
             return False, f"MISMATCH at {where}: expected seq {number - 1}"
@@ -89,7 +91,15 @@ def main() -> int:
     parser.add_argument("--pubkey", type=Path, default=None)
     args = parser.parse_args()
     pubkey = args.pubkey or args.record.parent / "signing_pub.pem"
-    ok, message = verify(args.record, pubkey)
+    for need, what in ((args.record, "record"), (pubkey, "public key (pass --pubkey)")):
+        if not need.is_file():
+            print(f"ERROR: {what} not found: {need}", file=sys.stderr)
+            return 2
+    try:
+        ok, message = verify(args.record, pubkey)
+    except ValueError as exc:  # unreadable PEM or non-UTF-8 record
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     print(message)
     return 0 if ok else 1
 

@@ -19,6 +19,7 @@ mkdir -p "$OUT"
 STAMP=$OUT/.start
 touch "$STAMP"
 SUMMARY=submission/live-numbers.md
+mkdir -p "$(dirname "$SUMMARY")"
 
 if [ "$MODE" = live ]; then
   echo "== runtime_proof.py"
@@ -26,7 +27,7 @@ if [ "$MODE" = live ]; then
   if ! grep -q '^ALL PASS' "$OUT/runtime_proof.log"; then
     echo
     echo "STOP: the runtime is not fully wired. Do the unchecked portal steps above"
-    echo "(submission/portal-clickpath.md), then run scripts/live_all.sh again."
+    echo "(docs/RUNTIME_PROOF.md), then run scripts/live_all.sh again."
     exit 2
   fi
   export CLEARGATE_ENFORCER=agntid CLEARGATE_TOOLS=mcp

@@ -215,7 +215,9 @@ class GitHubStub:
             self.direct_main_writes.append(path)
         self._git("checkout", "-q", branch)
         try:
-            target = self.repo / path
+            target = (self.repo / path).resolve()
+            if not target.is_relative_to(self.repo.resolve()):  # the stub never writes outside its own repo
+                return f"refused: {path} is outside the repository"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)
             self._git("add", path)

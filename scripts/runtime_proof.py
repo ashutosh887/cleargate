@@ -60,7 +60,7 @@ def prefix(name: str) -> str:
     return head if head in PREFIXES else "other"
 
 
-# Step numbers match submission/portal-clickpath.md.
+# Portal steps in click order; docs/RUNTIME_PROOF.md describes the checks.
 STEP = {
     "connect": "step 1-2: portal Runtimes -> copy bootstrap token -> http://localhost:8080 -> paste -> Connect to Control Plane",
     "setup": "step 3: Setup tab -> MCP Support on, Protection Profile Medium / READ_WRITE -> Mark reviewed (5 of 5)",
@@ -88,7 +88,7 @@ def need(key: str, why: str = "") -> None:
 def print_todo() -> None:
     if not todo:
         return
-    print("\nNEXT CLICKS (in order, see submission/portal-clickpath.md):")
+    print("\nNEXT CLICKS (in order, see docs/RUNTIME_PROOF.md):")
     for i, key in enumerate(sorted(todo, key=ORDER.index), 1):
         why = todo[key]
         print(f"  [ ] {i}. {STEP[key]}" + (f"\n         why: {why}" if why else ""))
