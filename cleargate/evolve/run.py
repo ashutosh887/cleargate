@@ -141,11 +141,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--budget-min", type=float, help="all-day mode: keep running new seeds for N minutes")
     p.add_argument("--pause", type=float, default=30.0, help="all-day mode: seconds between runs")
     p.add_argument("--totals", action="store_true", help="print the cumulative totals headline and exit")
+    p.add_argument("--policy-out", type=Path, default=None,
+                   help="where to write the evolved policy copy (default policies/evolved-<run>.yaml)")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     a = parser().parse_args(argv)
+    from cleargate.config import Settings
     from cleargate.evolve import daylong
 
     if a.totals:
@@ -175,7 +178,8 @@ def run_once(a: argparse.Namespace, scratch: bool = False) -> tuple[int, dict[st
     prompt = catalog["task_prompt"].strip()
     base_raw = yaml.safe_load(policy_path.read_text())
     stub = a.target == "stub"
-    evolved_path = (out_dir / "evolved.yaml") if scratch else ROOT / "policies" / f"evolved-{run_id}.yaml"
+    evolved_path = (out_dir / "evolved.yaml") if scratch else (
+        getattr(a, "policy_out", None) or ROOT / "policies" / f"evolved-{run_id}.yaml").resolve()
     header = (f"# Evolved copy of {rel(policy_path)} written by `cleargate evolve` run {run_id}.\n"
               f"# Rules prefixed by the fuzzer close gaps it found; policy.yaml itself is never edited.\n")
     applied: list[dict[str, Any]] = []
