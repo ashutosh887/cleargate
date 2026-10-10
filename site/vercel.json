@@ -1,0 +1,8 @@
+{
+  "cleanUrls": false,
+  "headers": [
+    { "source": "/assets/audio/(.*)\\.wav", "headers": [{ "key": "Content-Type", "value": "audio/wav" }, { "key": "Accept-Ranges", "value": "bytes" }] },
+    { "source": "/assets/audio/(.*)\\.m4a", "headers": [{ "key": "Content-Type", "value": "audio/mp4" }] },
+    { "source": "/verify/(.*)", "headers": [{ "key": "Content-Type", "value": "text/plain; charset=utf-8" }] }
+  ]
+}

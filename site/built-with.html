@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Built with · ClearGate</title>
+<meta name="description" content="The tools ClearGate uses, one line each.">
+<meta property="og:title" content="Built with · ClearGate">
+<meta property="og:description" content="The agent acts. AgntID decides. The engineer signs.">
+<meta property="og:image" content="/assets/img/03-block-injection.jpg">
+<meta name="theme-color" content="#0f1522">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="ClearGate home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="3" y="4" width="6" height="24" fill="#ff5d5d"/><rect x="23" y="4" width="6" height="24" fill="#3ddc97"/><rect x="9" y="13" width="14" height="6" fill="currentColor"/></svg> ClearGate</a>
+    <nav aria-label="Pages">
+      <a href="/how-it-works.html">How it works</a>
+      <a href="/bank-call.html">The bank call</a>
+      <a href="/proof.html">Proof</a>
+      <a href="/verify.html">Verify</a>
+      <a href="/built-with.html" aria-current="page">Built with</a>
+    </nav>
+  </div>
+</header>
+<main>
+<div class="wrap">
+
+<div class="col">
+<h1>Built with</h1>
+<p class="lede">What we used, and what for.</p>
+<div class="table-wrap"><table class="deps">
+  <thead><tr><th>Tool</th><th>What we used it for</th></tr></thead>
+  <tbody>
+    <tr><td><a href="https://agntid.ai/">AgntID</a></td><td>The customer-hosted runtime and portal that make every Runtime Access Decision. We call it through the <a href="https://github.com/AGNTID-AI/agntid-python">agntid Python SDK</a>.</td></tr>
+    <tr><td><a href="https://www.sarvam.ai/apis/text-to-speech">Sarvam AI</a></td><td>Text-to-speech for the caller voices and the on-call phone, speech-to-text for the engineer's spoken approval. English and Hindi.</td></tr>
+    <tr><td><a href="https://ai.google.dev/gemini-api/docs">Gemini API</a></td><td>The model behind live agent runs, through its OpenAI-compatible endpoint. The stage run uses a scripted agent.</td></tr>
+    <tr><td><a href="https://gofastmcp.com/">FastMCP</a></td><td>Our <code>payments</code> and <code>comms</code> MCP servers that sit behind the runtime.</td></tr>
+    <tr><td><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></td><td>How every agent reaches every tool, so the runtime can sit in between.</td></tr>
+    <tr><td><a href="https://github.com/github/github-mcp-server">GitHub MCP server</a></td><td>GitHub's official server for issues, branches, PRs and merges.</td></tr>
+    <tr><td><a href="https://www.postgresql.org/">PostgreSQL</a></td><td>The synthetic refund ledger, orders and masked card table.</td></tr>
+    <tr><td><a href="https://github.com/features/actions">GitHub Actions</a></td><td>Runs <code>cleargate gate</code> on every PR that touches agents or policy.</td></tr>
+    <tr><td><a href="https://cryptography.io/">cryptography</a></td><td>Ed25519 signatures on the record, checked by <code>verify.py</code>.</td></tr>
+    <tr><td><a href="https://ed25519.cr.yp.to/">Ed25519</a></td><td>The signature scheme itself.</td></tr>
+    <tr><td><a href="https://genai.owasp.org/llm-top-10/">OWASP LLM Top 10 (2025)</a></td><td>Labels on every attack in the catalogue and the coverage matrix.</td></tr>
+    <tr><td><a href="https://genai.owasp.org/resource/agentic-ai-threats-and-mitigations/">OWASP Agentic AI threats</a></td><td>The ASI ids on the CI gate's attack table.</td></tr>
+    <tr><td><a href="https://fastapi.tiangolo.com/">FastAPI</a></td><td>The split-screen console and the <code>/oncall</code> phone page.</td></tr>
+    <tr><td><a href="https://www.docker.com/">Docker</a></td><td>Runs the AgntID runtime from its public compose file.</td></tr>
+    <tr><td><a href="https://playwright.dev/">Playwright</a></td><td>The console screenshots on this site.</td></tr>
+    <tr><td><a href="https://vercel.com/">Vercel</a></td><td>Hosts this site.</td></tr>
+    <tr><td><a href="https://fonts.google.com/specimen/Archivo">Archivo</a></td><td>Every word on this site that isn't code.</td></tr>
+    <tr><td><a href="https://fonts.google.com/specimen/IBM+Plex+Mono">IBM Plex Mono</a></td><td>Code, record lines and numbers.</td></tr>
+  </tbody>
+</table></div>
+</div>
+<p class="next"><a href="/">Back to the start</a></p>
+
+</div>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p class="tag">The agent acts. AgntID decides. The engineer signs.</p>
+    <p>Built at the AgntID hackathon, 10 Oct 2026. Code: <a href="https://github.com/ashutosh887/cleargate">github.com/ashutosh887/cleargate</a>. For LLM readers: <a href="/llms.txt">llms.txt</a>.</p>
+    <p class="links">
+      <a href="https://agntid.ai/">AgntID</a>
+      <a href="https://www.sarvam.ai/">Sarvam AI</a>
+      <a href="https://ai.google.dev/gemini-api/docs">Gemini API</a>
+      <a href="https://gofastmcp.com/">FastMCP</a>
+      <a href="https://modelcontextprotocol.io/">Model Context Protocol</a>
+      <a href="https://www.postgresql.org/">PostgreSQL</a>
+      <a href="https://github.com/features/actions">GitHub Actions</a>
+      <a href="https://vercel.com/">Vercel</a>
+      <a href="https://genai.owasp.org/llm-top-10/">OWASP GenAI</a>
+    </p>
+  </div>
+</footer>
+<script src="/main.js" defer></script>
+</body>
+</html>

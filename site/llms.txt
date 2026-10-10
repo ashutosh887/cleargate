@@ -17,23 +17,23 @@ Most numbers below come from the local stand-in (`CLEARGATE_ENFORCER=local`), wh
 - Real-world AgntID relevance (15%): the reason column of the README controls table; `reason:` on every rule in `policy.yaml` (PCI DSS, DPDP, RBI mappings, as review evidence, not compliance claims).
 - Depth of AgntID usage (25%): `cleargate/agntid_enforcer.py`; `docs/AGNTID_IMPLEMENTATION.md`; `cleargate evolve` and the policy writer, framed as AgntID's Runtime Operator Workflow (Auto-Discover, Define Policies, Simulate & Test, Enforce at Runtime, Audit & Replay).
 - Technical execution and before/after proof (20%): `cleargate check --stub`; `python verify.py examples/stub-gated.jsonl`; `scripts/runtime_proof.py` (live only); README "Results".
-- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the showcase site; demo video (link added at submission).
+- Demo and communication (25%): `docs/DEMO.md`; `docs/screenshots/`; the `/oncall` phone approval page; the site, https://trycleargate.vercel.app; the demo video.
 
 ## Key files
 
-- [README.md](https://github.com/ashutosh887/cleargate/blob/main/README.md): overview, controls table, results, limitations, judging map
-- [cleargate/agntid_enforcer.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/agntid_enforcer.py): AgntID SDK adapter (task open, delegation, wrapped calls, denial parsing, live sandbox guard for `main`)
-- [cleargate/enforcement.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/enforcement.py): enforcement seam, stock client, local stand-in, escalation and approval binding
-- [cleargate/record.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/record.py) and [verify.py](https://github.com/ashutosh887/cleargate/blob/main/verify.py): signed record and its offline verifier
-- [cleargate/agents/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/agents/): agent loop, team prompts, LLM brains, scripted brain
-- [cleargate/bank/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/bank/): bank voice support agent, payee check, stand-in checks
-- [cleargate/evolve/](https://github.com/ashutosh887/cleargate/blob/main/cleargate/evolve/): deterministic policy fuzzer; [attacks/evolved.json](https://github.com/ashutosh887/cleargate/blob/main/attacks/evolved.json) is its regression set
-- [cleargate/gate.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/gate.py) and [.github/workflows/cleargate-gate.yml](https://github.com/ashutosh887/cleargate/blob/main/.github/workflows/cleargate-gate.yml): CI gate with SARIF output
-- [cleargate/policywriter.py](https://github.com/ashutosh887/cleargate/blob/main/cleargate/policywriter.py): least-privilege policy writer
-- [attacks/catalog.yaml](https://github.com/ashutosh887/cleargate/blob/main/attacks/catalog.yaml): the 20-attack catalogue
-- [policy.yaml](https://github.com/ashutosh887/cleargate/blob/main/policy.yaml): stand-in policy mirroring the portal by hand
-- [docs/ARCHITECTURE.md](https://github.com/ashutosh887/cleargate/blob/main/docs/ARCHITECTURE.md), [docs/THREAT_MODEL.md](https://github.com/ashutosh887/cleargate/blob/main/docs/THREAT_MODEL.md), [docs/CHALLENGES.md](https://github.com/ashutosh887/cleargate/blob/main/docs/CHALLENGES.md)
-- [docs/evolution.html](https://github.com/ashutosh887/cleargate/blob/main/docs/evolution.html) and [docs/coverage.html](https://github.com/ashutosh887/cleargate/blob/main/docs/coverage.html): fuzzer family tree and coverage matrix
+- [README.md](README.md): overview, controls table, results, limitations, judging map
+- [cleargate/agntid_enforcer.py](cleargate/agntid_enforcer.py): AgntID SDK adapter (task open, delegation, wrapped calls, denial parsing, live sandbox guard for `main`)
+- [cleargate/enforcement.py](cleargate/enforcement.py): enforcement seam, stock client, local stand-in, escalation and approval binding
+- [cleargate/record.py](cleargate/record.py) and [verify.py](verify.py): signed record and its offline verifier
+- [cleargate/agents/](cleargate/agents/): agent loop, team prompts, LLM brains, scripted brain
+- [cleargate/bank/](cleargate/bank/): bank voice support agent, payee check, stand-in checks
+- [cleargate/evolve/](cleargate/evolve/): deterministic policy fuzzer; [attacks/evolved.json](attacks/evolved.json) is its regression set
+- [cleargate/gate.py](cleargate/gate.py) and [.github/workflows/cleargate-gate.yml](.github/workflows/cleargate-gate.yml): CI gate with SARIF output
+- [cleargate/policywriter.py](cleargate/policywriter.py): least-privilege policy writer
+- [attacks/catalog.yaml](attacks/catalog.yaml): the 20-attack catalogue
+- [policy.yaml](policy.yaml): stand-in policy mirroring the portal by hand
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), [docs/CHALLENGES.md](docs/CHALLENGES.md)
+- [docs/evolution.html](docs/evolution.html) and [docs/coverage.html](docs/coverage.html): fuzzer family tree and coverage matrix
 
 ## How to run
 
@@ -65,7 +65,7 @@ All measured on 10 Oct 2026.
 - Policy writer (local stand-in): 19 of 20 attacks blocked, 0 of 13 needed calls broken, 7 of 7 out-of-task calls stopped.
 - Coverage matrix (local stand-in): 85 cases; stock 67 of 85 reached a tool; 11 cases can only be stopped by AgntID's intent check, so the stand-in cannot prove them.
 - CI: PR #3 loosens the policy so the fix agent merges without approval; the gate fails with "NO-GO: merged by the agent with no human approval".
-- Live AgntID runtime: pending. Numbers come at submission.
+- Live AgntID runtime: pending. Every number above is from the local stand-in, labelled "not AgntID".
 
 ## Limitations
 
@@ -80,4 +80,4 @@ All measured on 10 Oct 2026.
 ## Optional
 
 - [Showcase site](https://trycleargate.vercel.app/)
-- [docs/ROADMAP.md](https://github.com/ashutosh887/cleargate/blob/main/docs/ROADMAP.md): what comes next
+- [docs/ROADMAP.md](docs/ROADMAP.md): what comes next

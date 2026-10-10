@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof · ClearGate</title>
+<meta name="description" content="Measured numbers with provenance, the policy fuzzer's family tree, and the CI gate on PR #3.">
+<meta property="og:title" content="Proof · ClearGate">
+<meta property="og:description" content="The agent acts. AgntID decides. The engineer signs.">
+<meta property="og:image" content="/assets/img/03-block-injection.jpg">
+<meta name="theme-color" content="#0f1522">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="ClearGate home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="3" y="4" width="6" height="24" fill="#ff5d5d"/><rect x="23" y="4" width="6" height="24" fill="#3ddc97"/><rect x="9" y="13" width="14" height="6" fill="currentColor"/></svg> ClearGate</a>
+    <nav aria-label="Pages">
+      <a href="/how-it-works.html">How it works</a>
+      <a href="/bank-call.html">The bank call</a>
+      <a href="/proof.html" aria-current="page">Proof</a>
+      <a href="/verify.html">Verify</a>
+      <a href="/built-with.html">Built with</a>
+    </nav>
+  </div>
+</header>
+<main>
+<div class="wrap">
+
+<div class="col">
+<h1>Proof</h1>
+<p class="lede">What the gate stopped, what the stock agents did, and where each number comes from.</p>
+
+<h2>The incident team</h2>
+<div class="table-wrap"><table>
+  <caption>One run of <code>cleargate check --stub</code></caption>
+  <thead><tr><th>Measure</th><th>Stock</th><th>Gated</th></tr></thead>
+  <tbody>
+    <tr><td>Tools visible at task start</td><td class="num">49</td><td class="num">11</td></tr>
+    <tr><td>GitHub tools visible</td><td class="num">41</td><td class="num">7</td></tr>
+    <tr><td>Tool-schema context, approx. tokens</td><td class="num">3,045</td><td class="num">770</td></tr>
+    <tr><td>Out-of-task calls that reached a tool</td><td class="num">8 of 8</td><td class="num">0 of 7</td></tr>
+    <tr><td>Merge</td><td>by the agent itself</td><td>after approval (offline auto-approver, not a human)</td></tr>
+    <tr><td>Signed record</td><td class="num">MATCH</td><td class="num">MATCH</td></tr>
+    <tr><td>Verdict</td><td><span class="stamp s-block">No-go</span></td><td><span class="stamp s-allow">Go</span></td></tr>
+  </tbody>
+</table></div>
+<p class="fine note">Measured on the local AgntID stand-in; live runtime figures in progress.</p>
+</div>
+
+<figure class="shot">
+  <img src="/assets/img/06-go-live-screen.jpg" alt="Go-live screen: GO stamp, tools narrowed 49 to 11, 7 out-of-task attempts blocked, merge approved, retried merge blocked, signed record MATCH." loading="lazy">
+  <figcaption>The go-live screen after a gated run. </figcaption>
+</figure>
+
+<div class="col">
+<h2>The attack catalogue</h2>
+<ul>
+  <li>16 of 20 attacks reached a tool on the stock MCP servers (2 simulated, 2 not run).</li>
+  <li>The policy our policy writer proposed blocked 19 of 20, and broke 0 of the 13 calls the real task needs. </li>
+  <li>85 coverage cases: stock let 67 reach a tool. 11 can only be stopped by AgntID's intent check, which the stand-in can't do. <a href="/assets/coverage.html">Coverage matrix</a></li>
+</ul>
+<p class="fine note">Measured on the local AgntID stand-in; live runtime figures in progress.</p>
+
+<h2>The gate that evolves</h2>
+<p><code>cleargate evolve</code> is a policy fuzzer with no LLM in it. It mutates every attack the policy stopped and keeps whatever gets through.</p>
+<p>It found a hole in our own rule. We compared the branch name as a raw string, and generation 2 got five writes to production past it: <code>MAIN</code>, <code>Main</code>, <code>heads/main</code>, <code>refs/heads/main</code>, <code>refs/heads/master</code>. We now compare the normalised ref. The re-run found 0 gaps in 585 cases over 6 generations, and the real task still passed. Seed 7. </p>
+</div>
+<div class="frame"><iframe src="/assets/evolution.html" title="Policy evolution family tree, generation by generation" loading="lazy"></iframe></div>
+<p class="fine"><a href="/assets/evolution.html">Open the family tree on its own page</a></p>
+
+<div class="col">
+<h2>CI: PR #3</h2>
+<p><code>cleargate gate</code> re-runs the attacks and the real task on every pull request that touches the agents or the policy, and exits 1 if any attack reaches a tool. PR #3 applies <code>scripts/demo-loosen-policy.patch</code>, which lets the fix agent merge without approval. The check fails with:</p>
+<pre class="term"><span class="bad">NO-GO: merged by the agent with no human approval</span></pre>
+<p><a href="https://github.com/ashutosh887/cleargate/pull/3">PR #3 on GitHub</a></p>
+</div>
+<figure class="shot">
+  <img src="/assets/img/09-gate-summary.jpg" alt="The gate's summary table on a passing run: 0 of 20 attacks reached a tool, 3 need AgntID intent." loading="lazy">
+  <figcaption>The gate's summary on a passing run of <code>policy.yaml</code>: 0 of 20 attacks reached a tool, 3 need AgntID's intent check. </figcaption>
+</figure>
+<p class="next"><a href="/verify.html">Verify a record</a></p>
+
+</div>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p class="tag">The agent acts. AgntID decides. The engineer signs.</p>
+    <p>Built at the AgntID hackathon, 10 Oct 2026. Code: <a href="https://github.com/ashutosh887/cleargate">github.com/ashutosh887/cleargate</a>. For LLM readers: <a href="/llms.txt">llms.txt</a>.</p>
+    <p class="links">
+      <a href="https://agntid.ai/">AgntID</a>
+      <a href="https://www.sarvam.ai/">Sarvam AI</a>
+      <a href="https://ai.google.dev/gemini-api/docs">Gemini API</a>
+      <a href="https://gofastmcp.com/">FastMCP</a>
+      <a href="https://modelcontextprotocol.io/">Model Context Protocol</a>
+      <a href="https://www.postgresql.org/">PostgreSQL</a>
+      <a href="https://github.com/features/actions">GitHub Actions</a>
+      <a href="https://vercel.com/">Vercel</a>
+      <a href="https://genai.owasp.org/llm-top-10/">OWASP GenAI</a>
+    </p>
+  </div>
+</footer>
+<script src="/main.js" defer></script>
+</body>
+</html>

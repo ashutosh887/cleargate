@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a record · ClearGate</title>
+<meta name="description" content="Download a signed ClearGate record, its public key and verify.py, and check it offline.">
+<meta property="og:title" content="Verify a record · ClearGate">
+<meta property="og:description" content="The agent acts. AgntID decides. The engineer signs.">
+<meta property="og:image" content="/assets/img/03-block-injection.jpg">
+<meta name="theme-color" content="#0f1522">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>document.documentElement.classList.add("js")</script>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="ClearGate home"><svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect x="3" y="4" width="6" height="24" fill="#ff5d5d"/><rect x="23" y="4" width="6" height="24" fill="#3ddc97"/><rect x="9" y="13" width="14" height="6" fill="currentColor"/></svg> ClearGate</a>
+    <nav aria-label="Pages">
+      <a href="/how-it-works.html">How it works</a>
+      <a href="/bank-call.html">The bank call</a>
+      <a href="/proof.html">Proof</a>
+      <a href="/verify.html" aria-current="page">Verify</a>
+      <a href="/built-with.html">Built with</a>
+    </nav>
+  </div>
+</header>
+<main>
+<div class="wrap">
+
+<div class="col">
+<h1>Verify a record</h1>
+<p class="lede">Every decision goes into a JSONL record. You can check it with no network and no API keys.</p>
+<p>Each line carries the SHA-256 digest of the call's arguments, the hash of the line before it, and an Ed25519 signature. This is line 9 of the gated run, the injected export:</p>
+<pre class="rec">{"seq": 8, "verb": <span class="v-block">"BLOCK"</span>, "agent": "triage",
+ "tool": "payments.export_customer_records", "args": {"segment": "all"},
+ "rule": "visible_tools",
+ "reason": "payments.export_customer_records was narrowed out of this task",
+ "args_digest": "939b0358ff821741…", "prev_hash": "5b2be9350f0463fa…",
+ "hash": "83165fb1821d3163…", "sig": "yU0f4fiNSctwQijP…"}</pre>
+<p class="fine">Fields trimmed and values shortened for the page. The file below is the full record.</p>
+
+<div class="ctas">
+  <a class="btn primary" href="/verify/stub-gated.jsonl" download>Download the record</a>
+  <a class="btn" href="/verify/signing_pub.pem" download>Public key</a>
+  <a class="btn" href="/verify/verify.py" download>verify.py</a>
+</div>
+
+<pre class="term"><span class="p">$</span> pip install cryptography
+<span class="p">$</span> python verify.py stub-gated.jsonl
+<span class="ok">MATCH: 30 records, sealed; chain intact, all signatures valid (key 7fffe58033d2ce21…)</span>
+
+<span class="c"># change "limit":5000 to "limit":50 on line 15, then run it again</span>
+<span class="p">$</span> python verify.py stub-gated.jsonl
+<span class="bad">MISMATCH at line 15 (seq 14): args_digest does not match the canonical arguments</span></pre>
+
+<p>It proves the record hasn't changed since it was signed. It doesn't prove the signer was honest. This record was signed by the local stand-in run of <code>cleargate check --stub</code>.</p>
+
+<h2>Run the rest yourself</h2>
+<pre class="term"><span class="p">$</span> git clone https://github.com/ashutosh887/cleargate && cd cleargate
+<span class="p">$</span> pip install -e .
+<span class="p">$</span> cleargate check --stub              <span class="c"># stock vs gated, GO / NO-GO</span>
+<span class="p">$</span> cleargate bank --demo all --stub    <span class="c"># the five bank calls</span>
+<span class="p">$</span> cleargate evolve --target stub      <span class="c"># the policy fuzzer</span>
+<span class="p">$</span> python scripts/runtime_proof.py     <span class="c"># live AgntID runtime only</span></pre>
+<p class="fine">Python 3.11 or later. Only the last command needs a live runtime.</p>
+
+<h2>What we don't claim</h2>
+<ul>
+  <li>In live mode the AgntID runtime makes every allow and deny. ClearGate makes three decisions of its own, and the record labels each: the digest-bound approval, the bank's payee check, and a demo rail that stops live runs writing to the real <code>main</code>.</li>
+  <li>The numbers on this site are measured on the local AgntID stand-in, which labels each decision "not AgntID".</li>
+  <li>There's no policy API, so <code>policy.yaml</code> mirrors the portal by hand.</li>
+  <li>The stage run uses a scripted agent that always follows the injection, so stock and gated get the same input.</li>
+  <li>The PCI DSS, DPDP and RBI mappings are evidence for a review, not a compliance claim.</li>
+  <li>Email is never sent. It goes to a local outbox.</li>
+</ul>
+</div>
+<p class="next"><a href="/built-with.html">Built with</a></p>
+
+</div>
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p class="tag">The agent acts. AgntID decides. The engineer signs.</p>
+    <p>Built at the AgntID hackathon, 10 Oct 2026. Code: <a href="https://github.com/ashutosh887/cleargate">github.com/ashutosh887/cleargate</a>. For LLM readers: <a href="/llms.txt">llms.txt</a>.</p>
+    <p class="links">
+      <a href="https://agntid.ai/">AgntID</a>
+      <a href="https://www.sarvam.ai/">Sarvam AI</a>
+      <a href="https://ai.google.dev/gemini-api/docs">Gemini API</a>
+      <a href="https://gofastmcp.com/">FastMCP</a>
+      <a href="https://modelcontextprotocol.io/">Model Context Protocol</a>
+      <a href="https://www.postgresql.org/">PostgreSQL</a>
+      <a href="https://github.com/features/actions">GitHub Actions</a>
+      <a href="https://vercel.com/">Vercel</a>
+      <a href="https://genai.owasp.org/llm-top-10/">OWASP GenAI</a>
+    </p>
+  </div>
+</footer>
+<script src="/main.js" defer></script>
+</body>
+</html>
