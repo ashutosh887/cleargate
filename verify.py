@@ -4,7 +4,9 @@
     python verify.py records/<run>-gated.jsonl [--pubkey records/signing_pub.pem]
 
 Recomputes every arguments digest and line hash, checks the hash chain and every
-Ed25519 signature, and prints MATCH or the first mismatch.
+Ed25519 signature, checks the signed seal on the last line (record count + final chain
+hash, so a truncated record fails), and prints MATCH or the first mismatch. Records
+written before seals existed verify as "UNSEALED (legacy)".
 """
 from __future__ import annotations
 
@@ -39,6 +41,8 @@ def verify(path: Path, pubkey_path: Path) -> tuple[bool, str]:
     lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
     if not lines:
         return False, "MISMATCH: the record is empty"
+    sealed_format = False
+    seal: dict | None = None
     for number, line in enumerate(lines, start=1):
         try:
             entry = json.loads(line)
@@ -52,6 +56,8 @@ def verify(path: Path, pubkey_path: Path) -> tuple[bool, str]:
         payload = entry.get("payload", {})
         if number == 1 and payload.get("pubkey_sha256") != fingerprint:
             return False, "MISMATCH at line 1: the header names a different signing key"
+        if number == 1:
+            sealed_format = bool(payload.get("seal"))
         if "args" in payload and entry.get("args_digest") != sha256(dict(payload["args"] or {})):
             return False, f"MISMATCH at {where}: args_digest does not match the canonical arguments"
         body = {k: entry[k] for k in ("seq", "prev_hash", "payload", "args_digest") if k in entry}
@@ -61,8 +67,20 @@ def verify(path: Path, pubkey_path: Path) -> tuple[bool, str]:
             key.verify(base64.b64decode(entry.get("sig", "")), entry["hash"].encode("ascii"))
         except (InvalidSignature, ValueError):
             return False, f"MISMATCH at {where}: bad Ed25519 signature"
+        if payload.get("kind") == "seal":
+            if number != len(lines):
+                return False, f"MISMATCH at {where}: a seal line is followed by more records"
+            if payload.get("count") != number - 1 or payload.get("final_hash") != prev:
+                return False, f"MISMATCH: truncated/unsealed (seal names {payload.get('count')} records, file has {number - 1})"
+            seal = payload
         prev = entry["hash"]
-    return True, f"MATCH: {len(lines)} records, chain intact, all signatures valid (key {fingerprint[:16]}…)"
+    if seal is not None:
+        return True, (f"MATCH: {len(lines) - 1} records, sealed; chain intact, all signatures valid "
+                      f"(key {fingerprint[:16]}…)")
+    if sealed_format:
+        return False, f"MISMATCH: truncated/unsealed ({len(lines)} records, no seal line at the end)"
+    return True, (f"UNSEALED (legacy): {len(lines)} records, chain intact, all signatures valid, but truncation "
+                  f"cannot be ruled out (key {fingerprint[:16]}…)")
 
 
 def main() -> int:
