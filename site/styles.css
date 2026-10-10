@@ -172,3 +172,4 @@ td.pending { color: var(--escalate-dk); font-family: var(--mono); font-size: var
   .demo-frame p { font-size: var(--s-2); left: 16px; bottom: 14px; }
   .table-wrap table { min-width: 560px; }
 }
+@media (max-width: 640px) { .table-wrap table.deps { min-width: 0; } .deps td:first-child { white-space: normal; width: 40%; } }
