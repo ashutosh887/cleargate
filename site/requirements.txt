@@ -3,3 +3,4 @@ httpx
 pyyaml
 rich
 click
+openai

@@ -8,6 +8,10 @@
     "api/voice.py": {
       "includeFiles": "{api/_lib/**,api/call.py}",
       "maxDuration": 30
+    },
+    "api/live.py": {
+      "includeFiles": "api/_lib/**",
+      "maxDuration": 30
     }
   },
   "headers": [

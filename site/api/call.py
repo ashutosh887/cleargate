@@ -1,4 +1,5 @@
 """POST /api/call {"text": "...", "phone"?: "..."}: one caller turn, run stock and gated on the stub bank.
+POST /api/call {"domain": "devops", "preset": id}: the coding/incident team on one preset (GET ?domain=devops lists them).
 
 No model and no keys: the scripted bank team and the local AgntID stand-in, the same code as
 `cleargate bank --stub`. The bank's own payee check is off so only the agent layer decides.
@@ -18,6 +19,7 @@ os.environ.update({"CLEARGATE_LLM": "scripted", "PAYEE_CHECK": "off", "CLEARGATE
                    "CLEARGATE_STATE_DIR": "/tmp/cleargate/state", "CLEARGATE_RECORDS_DIR": "/tmp/cleargate/records"})
 
 from cleargate.bank.call import DEFAULT_PHONE, DEMO_PHONES, run_call  # noqa: E402
+from cleargate.web_demo import BY_ID as DEVOPS_PRESETS, headline, presets as devops_presets, run_preset  # noqa: E402
 
 PHONES = {DEFAULT_PHONE, *DEMO_PHONES.values()}
 MAX_TEXT = 400
@@ -61,6 +63,22 @@ def turn(text: str, phone: str) -> dict:
     return {"transcript": result["transcript"], "language": result["language"], "phone": phone, "panes": panes}
 
 
+def devops(preset_id: str) -> dict:
+    """The coding/incident team (orchestrator, triage, db, fix, comms) on stub GitHub, SQLite and a JSONL outbox."""
+    result = run_preset(preset_id)
+    panes = {}
+    for mode, pane in result["panes"].items():
+        steps = [step(d) for d in result["decisions"]
+                 if d["mode"] == mode and d["kind"] in ("call", "notice", "task_open")]
+        reply = "\n".join(f"{agent}: {text}" for agent, text in pane["reports"].items())
+        panes[mode] = {"source": pane["source"], "reply": reply, "steps": steps, "moved_off_file_inr": None,
+                       "counts": pane["counts"], "ledger": None, "verified": pane["verified"],
+                       "error": pane["error"], "record": record_text(str(pane["record"])),
+                       "headline": headline(pane["counts"])}
+    return {"domain": "devops", "preset": result["preset"], "label": result["label"],
+            "transcript": result["transcript"], "language": "en", "phone": None, "panes": panes}
+
+
 class handler(BaseHTTPRequestHandler):
     def _send(self, status: int, body: dict) -> None:
         data = json.dumps(body, ensure_ascii=False).encode("utf-8")
@@ -80,6 +98,14 @@ class handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(size) or b"{}")
         except (ValueError, json.JSONDecodeError):
             return self._send(400, {"error": "Send JSON: {\"text\": \"...\"}"})
+        if body.get("domain") == "devops":
+            preset = str(body.get("preset") or "")
+            if preset not in DEVOPS_PRESETS:
+                return self._send(400, {"error": f"Unknown preset. Pick one of: {', '.join(DEVOPS_PRESETS)}."})
+            try:
+                return self._send(200, devops(preset))
+            except Exception as exc:
+                return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
         text = str(body.get("text") or "").strip()[:MAX_TEXT]
         if not text:
             return self._send(400, {"error": "Say or type what the caller says."})
@@ -90,4 +116,8 @@ class handler(BaseHTTPRequestHandler):
             return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
 
     def do_GET(self) -> None:
+        from urllib.parse import parse_qs, urlparse
+
+        if (parse_qs(urlparse(self.path).query).get("domain") or [""])[0] == "devops":
+            return self._send(200, {"presets": devops_presets()})
         self._send(405, {"error": "POST a caller line to this endpoint."})

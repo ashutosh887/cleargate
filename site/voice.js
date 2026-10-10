@@ -11,12 +11,11 @@
     if (text != null) e.textContent = text;
     return e;
   };
-  var rupees = function (n) { return '\u20b9' + Number(n || 0).toLocaleString('en-IN'); };
 
   var btn = el('button', 'btn primary voice-btn', 'Hold to talk');
   btn.type = 'button';
   btn.setAttribute('aria-describedby', 'voice-status');
-  var status = el('p', 'fine voice-status', 'Speak as the caller, in English, Hindi or both. Up to 20 seconds.');
+  var status = el('p', 'fine voice-status', 'English, Hindi or both. Up to 20 s.');
   status.id = 'voice-status';
   status.setAttribute('aria-live', 'polite');
   var out = el('div', 'voice-out');
@@ -73,12 +72,7 @@
 
   function summary(res) {
     out.textContent = '';
-    var s = res.panes.stock, g = res.panes.gated;
     out.appendChild(el('p', 'voice-heard', 'Heard: "' + res.transcript + '"'));
-    var row = el('p', 'fine');
-    row.textContent = 'Stock moved ' + rupees(s.moved_off_file_inr) + ' to accounts not on file. Gated moved ' +
-      rupees(g.moved_off_file_inr) + '.';
-    out.appendChild(row);
     [['gated', 'Play the gated reply'], ['stock', 'Play the stock reply']].forEach(function (p) {
       var b64 = res.audio && res.audio[p[0]];
       if (!b64) return;
@@ -92,6 +86,7 @@
   function send(blob) {
     btn.disabled = true;
     status.textContent = 'Sending the call…';
+    var t0 = performance.now();
     var phoneEl = document.getElementById('phone');
     var phone = phoneEl ? phoneEl.textContent.trim() : '';
     fetch('/api/voice' + (phone ? '?phone=' + encodeURIComponent(phone) : ''), {
@@ -102,7 +97,7 @@
         if (!res.ok) throw new Error(res.body.error || 'The call failed.');
         var said = document.getElementById('said');
         if (said) said.value = res.body.transcript;
-        if (typeof window.cleargateRender === 'function') window.cleargateRender(res.body);
+        if (typeof window.cleargateRender === 'function') window.cleargateRender(res.body, Math.round(performance.now() - t0));
         document.dispatchEvent(new CustomEvent('cleargate:result', { detail: res.body }));
         summary(res.body);
         status.textContent = 'The gated agent is answering.';
