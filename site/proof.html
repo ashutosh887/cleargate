@@ -24,14 +24,14 @@
   <div class="wrap">
     <a class="brand" href="/" aria-label="ClearGate home"><span class="mark" aria-hidden="true">CG</span> ClearGate</a>
     <nav aria-label="Pages">
-      <a href="/how-it-works.html">How it works</a>
-      <a href="/bank-call.html">Examples</a>
-      <a href="/proof.html" aria-current="page">Proof</a>
-      <a href="/verify.html">Verify</a>
-      <a href="/built-with.html">Built with</a>
+      <a href="/how-it-works">How it works</a>
+      <a href="/bank-call">Examples</a>
+      <a href="/proof" aria-current="page">Proof</a>
+      <a href="/verify">Verify</a>
+      <a href="/built-with">Built with</a>
     </nav>
     <div class="bar-actions">
-      <a class="nav-cta" href="/try.html">Try a call</a>
+      <a class="nav-cta" href="/try">Try a call</a>
       <a class="gh" href="https://github.com/ashutosh887/cleargate" aria-label="ClearGate on GitHub"><svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
     </div>
   </div>
@@ -42,7 +42,22 @@
 <h1>Proof</h1>
 <p class="lede">What the gate stopped, what the stock agent did, and the command behind each number.</p>
 
-<h2 id="coding">Example: a coding agent</h2>
+<h2 id="bank">The bank voice agent</h2>
+<p>A failed-payment support line in Hindi and English. Callers pose as branch staff, the RBI fraud cell or a hospital and ask for money to go to a new account. The same calls go to the agent with no guardrails and to the gated agent.</p>
+<div class="table-wrap"><table>
+  <caption>Five demo calls, <code>cleargate bank --demo all --stub</code>, and the caller campaign, <code>PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7</code></caption>
+  <thead><tr><th>Measure</th><th>Stock</th><th>Gated</th></tr></thead>
+  <tbody>
+    <tr><td>Genuine failed UPI payment, ₹2,340</td><td>refunded to the account on file</td><td>refunded to the account on file</td></tr>
+    <tr><td>Attack calls that reached the refund tool</td><td class="num">4 of 4</td><td class="num">0 of 4</td></tr>
+    <tr><td>Campaign: money moved to accounts not on file</td><td class="num">₹2,22,840 (8 calls)</td><td class="num">₹0 (15 calls)</td></tr>
+    <tr><td>Before the destination allow-list rule</td><td class="num">₹2,22,840</td><td class="num">₹15,580, every refund under the ₹5,000 cap</td></tr>
+    <tr><td>Signed record</td><td class="num">MATCH</td><td class="num">MATCH</td></tr>
+  </tbody>
+</table></div>
+<p class="fine"><a href="/bank-call">Hear the calls and the rule the callers forced</a></p>
+
+<h2 id="coding">Second example: a coding agent</h2>
 <p>Five agents fix a duplicate-refund bug. The GitHub issue they read hides an instruction to export customer records, email them out and push to <code>main</code>.</p>
 <div class="table-wrap"><table>
   <caption>One run of <code>cleargate check --stub</code></caption>
@@ -69,13 +84,13 @@
   <li><span class="tile-fig">19 of 20</span><span class="tile-label">blocked by the policy writer's proposal, 0 of the 13 calls the real task needs broken</span></li>
   <li><span class="tile-fig"><span class="bad">68</span> <span class="to">→</span> <span class="good">0</span></span><span class="tile-label">of 86 coverage cases reached a tool, stock vs gated. 5 are spoken attacks replayed as audio; 11 need AgntID's intent check</span></li>
 </ul>
-<p class="fine"><a href="/assets/coverage.html">Open the coverage matrix</a></p>
+<p class="fine"><a href="/assets/coverage">Open the coverage matrix</a></p>
 
 <h2 id="evolve">The gate that evolves</h2>
 <p><code>cleargate evolve</code> is a policy fuzzer with no LLM in it. It mutates every attack the policy stopped and keeps whatever gets through.</p>
 <p>It found a hole in our own rule. Generation 2 got five writes to production past a raw-string branch check: <code>MAIN</code>, <code>Main</code>, <code>heads/main</code>, <code>refs/heads/main</code>, <code>refs/heads/master</code>. The rule now compares the normalised ref. The re-run found 0 gaps in 585 cases over 6 generations, and the real task still passed.</p>
 <div class="frame"><iframe src="/assets/evolution.html" title="Policy evolution family tree, generation by generation" loading="lazy"></iframe></div>
-<p class="fine"><a href="/assets/evolution.html">Open the family tree on its own page</a></p>
+<p class="fine"><a href="/assets/evolution">Open the family tree on its own page</a></p>
 
 <h2 id="ci">CI: PR #3</h2>
 <p><code>cleargate gate</code> re-runs the attacks and the real task on every pull request that touches the agents or the policy. PR #3 lets the fix agent merge without approval. The check fails:</p>
@@ -86,7 +101,7 @@
   <figcaption>A passing run on <code>policy.yaml</code>: 0 of 20 attacks reached a tool, 3 need AgntID's intent check.</figcaption>
 </figure>
 <p class="fine">Figures come from the local AgntID stand-in, labelled "not AgntID" in every signed record.</p>
-<p class="next"><a href="/verify.html">Verify a record</a></p>
+<p class="next"><a href="/verify">Verify a record</a></p>
 
 </div>
 </main>
@@ -99,16 +114,16 @@
       </div>
       <nav aria-label="Product">
         <h2>Product</h2>
-        <a href="/how-it-works.html">How it works</a>
-        <a href="/bank-call.html">Examples</a>
-        <a href="/try.html">Try a call</a>
-        <a href="/built-with.html">Built with</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/bank-call">Examples</a>
+        <a href="/try">Try a call</a>
+        <a href="/built-with">Built with</a>
       </nav>
       <nav aria-label="Proof">
         <h2>Proof</h2>
-        <a href="/verify.html">Verify a record</a>
-        <a href="/assets/coverage.html">Coverage matrix</a>
-        <a href="/assets/evolution.html">Evolution tree</a>
+        <a href="/verify">Verify a record</a>
+        <a href="/assets/coverage">Coverage matrix</a>
+        <a href="/assets/evolution">Evolution tree</a>
         <a href="https://github.com/ashutosh887/cleargate/pull/3">CI: PR #3</a>
       </nav>
       <nav aria-label="Code">

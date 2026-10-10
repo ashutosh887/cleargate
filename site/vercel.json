@@ -1,5 +1,5 @@
 {
-  "cleanUrls": false,
+  "cleanUrls": true,
   "functions": {
     "api/call.py": {
       "includeFiles": "api/_lib/**",
