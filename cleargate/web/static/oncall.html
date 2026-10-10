@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0d12">
+<title>ClearGate On-call</title>
+<style>
+  :root {
+    --bg: #0a0d12; --panel: #121821; --panel2: #18202b; --line: #263040; --text: #f1f4f8; --muted: #9aa6b6;
+    --allow: #34d17b; --block: #ff5a5a; --escalate: #ffb020; --narrow: #4f9dff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text);
+    font: 17px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 480px; margin: 0 auto; min-height: 100vh; min-height: 100dvh; padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 18px; }
+  .top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 14px; }
+  .top b { color: var(--text); font-size: 16px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--block); margin-right: 6px; }
+  .dot.on { background: var(--allow); }
+  .screen { display: none; flex: 1; flex-direction: column; gap: 18px; }
+  .screen.show { display: flex; }
+  .center { text-align: center; }
+  .avatar { width: 128px; height: 128px; margin: 18px auto 6px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--panel2); border: 2px solid var(--line); font: 800 40px/1 inherit; letter-spacing: -.02em; }
+  .ringing .avatar { border-color: var(--escalate); animation: pulse 1.1s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.55); } 100% { box-shadow: 0 0 0 34px rgba(255,176,32,0); } }
+  h1 { margin: 0; font-size: 26px; line-height: 1.2; }
+  h2 { margin: 0; font-size: 15px; color: var(--muted); font-weight: 500; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 15px; }
+  .card dt { color: var(--muted); }
+  .card dd { margin: 0; overflow-wrap: anywhere; }
+  .code { font-family: var(--mono); font-size: 40px; font-weight: 700; color: var(--escalate); letter-spacing: .12em; text-align: center; }
+  .nato { text-align: center; color: var(--muted); font-size: 15px; }
+  .buttons { display: flex; justify-content: space-around; gap: 16px; margin-top: auto; padding-top: 8px; }
+  .round { width: 76px; height: 76px; border-radius: 50%; border: 0; display: grid; place-items: center; cursor: pointer; color: #fff; }
+  .round svg { width: 34px; height: 34px; }
+  .round.answer { background: var(--allow); color: #04140b; }
+  .round.decline { background: var(--block); }
+  .round.answer.wiggle { animation: wiggle 1.1s ease-in-out infinite; }
+  @keyframes wiggle { 0%,60%,100% { transform: rotate(0); } 70% { transform: rotate(-14deg); } 80% { transform: rotate(14deg); } 90% { transform: rotate(-8deg); } }
+  .label { text-align: center; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  button.wide { width: 100%; padding: 16px; border-radius: 12px; border: 1px solid #36435a; background: var(--panel2); color: var(--text);
+    font: 600 17px/1.2 inherit; cursor: pointer; }
+  button.wide.primary { background: var(--narrow); border-color: var(--narrow); color: #031025; }
+  button.wide:disabled { opacity: .5; }
+  .log { font-size: 15px; display: flex; flex-direction: column; gap: 8px; }
+  .log .say { color: var(--muted); }
+  .log .heard { font-family: var(--mono); }
+  .log .ok { color: var(--allow); font-weight: 700; }
+  .log .bad { color: var(--block); font-weight: 700; }
+  .meter { height: 6px; border-radius: 3px; background: var(--panel2); overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--allow); transition: width .08s; }
+  .status { text-align: center; font-size: 15px; color: var(--escalate); min-height: 21px; }
+  .typed { display: flex; gap: 8px; }
+  .typed input { flex: 1; min-width: 0; font: 600 22px var(--mono); letter-spacing: .1em; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid #36435a; background: var(--panel2); color: var(--text); text-transform: lowercase; }
+  .typed button { padding: 0 16px; border-radius: 10px; border: 0; background: var(--allow); color: #04140b; font: 700 16px inherit; }
+  .note { font-size: 13px; color: var(--muted); }
+  .note code { font-family: var(--mono); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><span><b>ClearGate</b> on-call</span><span><span id="dot" class="dot"></span><span id="conn">connecting</span></span></div>
+
+  <section id="s-idle" class="screen show">
+    <div class="center">
+      <div class="avatar">CG</div>
+      <h1>Platform engineer, on call</h1>
+      <h2>INC-4471 · payments-api · duplicate refunds</h2>
+    </div>
+    <div class="card note" id="idle-note">Tap <b>Go on call</b> once so this phone can ring, speak and listen. When the agent asks to do something only a human may approve, this page rings.</div>
+    <div class="buttons" style="flex-direction: column;">
+      <button class="wide primary" id="arm">Go on call</button>
+      <button class="wide" id="report">🎙 Report incident by voice</button>
+      <div class="log" id="report-log"></div>
+    </div>
+  </section>
+
+  <section id="s-ring" class="screen">
+    <div class="center">
+      <div class="avatar">CG</div>
+      <h2>Incoming call</h2>
+      <h1>ClearGate escalation</h1>
+      <h2 id="ring-sub">fix sub-agent wants to merge</h2>
+    </div>
+    <div class="buttons">
+      <div><button class="round decline" id="decline" aria-label="Decline and reject"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.996.996 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button><div class="label">Reject</div></div>
+      <div><button class="round answer wiggle" id="answer" aria-label="Answer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1C10.61 21 3 13.39 3 4c0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg></button><div class="label">Answer</div></div>
+    </div>
+  </section>
+
+  <section id="s-call" class="screen">
+    <div class="center"><h2 id="call-timer">00:00</h2><h1>ClearGate escalation</h1></div>
+    <div class="card"><dl id="facts"></dl></div>
+    <div>
+      <div class="code" id="code">····</div>
+      <div class="nato" id="nato"></div>
+      <div class="nato">The engineer must repeat this code to approve.</div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="meter"><i id="level"></i></div>
+    <div class="log" id="log"></div>
+    <div class="typed" id="typed" hidden>
+      <input id="typed-code" maxlength="8" placeholder="code" autocomplete="off" autocapitalize="off" inputmode="text">
+      <button id="typed-go">Approve</button>
+    </div>
+    <div class="buttons">
+      <div><button class="round decline" id="hangup" aria-label="Reject and hang up"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.996.996 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg></button><div class="label">Reject</div></div>
+      <div><button class="round answer" id="talk" aria-label="Speak again"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></button><div class="label">Speak</div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const NATO = { a: "alpha", b: "bravo", c: "charlie", d: "delta", e: "echo", f: "foxtrot",
+  0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight", 9: "nine" };
+const WORDS = { zero: "0", oh: "0", one: "1", won: "1", two: "2", to: "2", too: "2", three: "3", four: "4", for: "4", five: "5", six: "6",
+  seven: "7", eight: "8", ate: "8", nine: "9", a: "a", ay: "a", alpha: "a", b: "b", be: "b", bee: "b", bravo: "b", c: "c", see: "c",
+  sea: "c", charlie: "c", d: "d", dee: "d", delta: "d", e: "e", echo: "e", f: "f", ef: "f", eff: "f", foxtrot: "f" };
+const spell = code => String(code).split("").map(c => NATO[c] || c).join(" ");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function parseCode(t) {
+  t = t.toLowerCase().replace(/fox\s*-?\s*trot/g, "foxtrot");
+  const tail = (t.match(/approv\w*\W+(.*)/) || [, t])[1];
+  let out = "";
+  for (const w of tail.match(/[a-z0-9]+/g) || []) {
+    if (w in WORDS) out += WORDS[w];
+    else if (/^[0-9a-f]+$/.test(w)) out += w;
+    else if (out) break;
+  }
+  return out;
+}
+const isReject = t => /\b(reject|decline|deny|denied|don'?t|do not|no)\b/i.test(t);
+
+let ctx = null, mic = null, sarvam = false, armed = false;
+const pending = new Map(), resolved = new Set();
+let current = null, ringTimer = null, ringSrc = [], callStart = 0, clockTimer = null, busyListening = false, tries = 0;
+
+function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.toggle("show", s.id === id)); }
+function status(t) { $("status").textContent = t || ""; }
+function log(cls, html, host = $("log")) { const d = document.createElement("div"); d.className = cls; d.innerHTML = html; host.appendChild(d); d.scrollIntoView({ block: "nearest" }); }
+
+async function arm() {
+  ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+  await ctx.resume();
+  const o = ctx.createOscillator(), g = ctx.createGain(); g.gain.value = 0; o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + .05);
+  if (window.speechSynthesis) speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(""), { volume: 0 }));
+  if (!mic && navigator.mediaDevices?.getUserMedia) {
+    try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+    catch (e) { mic = null; }
+  }
+  armed = true;
+  $("arm").textContent = mic ? "On call · ready" : "On call · no mic (needs HTTPS)";
+  $("arm").disabled = true;
+  $("idle-note").innerHTML = mic ? "Ready. Leave this page open; it rings when ClearGate escalates."
+    : `Ready to ring and speak, but the microphone is blocked. Phones only allow the mic on <b>HTTPS</b>: open the <code>cloudflared</code> URL. You can still type the code on the call.`;
+  maybeRing();
+}
+
+function ringtone(on) {
+  clearInterval(ringTimer); ringTimer = null;
+  ringSrc.forEach(s => { try { s.stop(); } catch (e) {} }); ringSrc = [];
+  if (navigator.vibrate) navigator.vibrate(0);
+  if (!on) return;
+  const burst = () => {
+    if (navigator.vibrate) navigator.vibrate([400, 200, 400]);
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    for (let k = 0; k < 2; k++) {
+      const g = ctx.createGain(); g.connect(ctx.destination);
+      const start = t0 + k * 0.6;
+      g.gain.setValueAtTime(0, start); g.gain.linearRampToValueAtTime(.22, start + .03);
+      g.gain.setValueAtTime(.22, start + .38); g.gain.linearRampToValueAtTime(0, start + .42);
+      for (const f of [440, 480]) { const o = ctx.createOscillator(); o.frequency.value = f; o.connect(g); o.start(start); o.stop(start + .45); ringSrc.push(o); }
+    }
+  };
+  burst(); ringTimer = setInterval(burst, 3000);
+}
+
+function describe(e) {
+  const a = e.args || {}, chain = e.delegation_chain || [];
+  const tool = String(e.tool || "").split(/[._]/).filter(Boolean);
+  const isMerge = /merge/.test(e.tool || "");
+  const pr = a.pull_number ?? a.pr ?? a.number ?? a.pullNumber;
+  const repo = String(a.repo || a.repository || "payments-api").split("/").pop();
+  const agent = String(e.agent || "fix").replace(/[-_]?agent$/, "");
+  const by = chain.length > 1 ? chain[chain.length - 2] : "orchestrator";
+  const what = isMerge ? `merge pull request ${pr != null ? "number " + pr + " " : ""}into main of ${repo}` : `call ${tool.join(" ")}`;
+  const why = isMerge ? "Policy says every merge to main needs a human. Segregation of duties: the agent that wrote the fix may not ship it."
+    : `Policy rule ${e.rule || "escalate"} requires a human for this action.`;
+  return { agent, by, what, why, pr, repo, isMerge };
+}
+
+function maybeRing() {
+  if (current) return;
+  const next = [...pending.values()].find(e => !resolved.has(e.id));
+  if (!next) return;
+  current = next; tries = 0;
+  const d = describe(next);
+  $("ring-sub").textContent = `${d.agent} sub-agent wants to ${d.isMerge ? "merge PR" + (d.pr != null ? " #" + d.pr : "") : "act"}`;
+  document.querySelector("#s-ring").classList.add("ringing");
+  show("s-ring"); ringtone(true);
+  if ("Notification" in window && Notification.permission === "granted" && document.hidden)
+    new Notification("ClearGate escalation", { body: $("ring-sub").textContent });
+}
+
+function endCall(outcome) {
+  ringtone(false); clearInterval(clockTimer); busyListening = false;
+  if (outcome) log(outcome.ok ? "ok" : "bad", esc(outcome.text));
+  current = null;
+  setTimeout(() => { if (!current) { show("s-idle"); maybeRing(); } }, outcome ? 6000 : 300);
+}
+
+async function speak(text) {
+  status("speaking…");
+  try {
+    if (!sarvam) throw new Error("sarvam off");
+    const r = await fetch("/api/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error(await r.text());
+    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+    await new Promise(res => { const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.onended = res; s.start(); });
+  } catch (err) {
+    if (!window.speechSynthesis) return;
+    await new Promise(res => {
+      const u = new SpeechSynthesisUtterance(text); u.lang = "en-IN"; u.rate = 1;
+      const v = speechSynthesis.getVoices().find(v => v.lang === "en-IN") || speechSynthesis.getVoices().find(v => /^en/.test(v.lang));
+      if (v) u.voice = v;
+      u.onend = u.onerror = res; speechSynthesis.speak(u);
+    });
+  } finally { status(""); }
+}
+
+function pickMime() {
+  for (const m of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]) if (window.MediaRecorder?.isTypeSupported?.(m)) return m;
+  return "";
+}
+
+async function recordClip(maxMs = 8000) {
+  const rec = new MediaRecorder(mic, pickMime() ? { mimeType: pickMime() } : undefined);
+  const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  const src = ctx.createMediaStreamSource(mic), an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an);
+  const data = new Uint8Array(an.fftSize);
+  const done = new Promise(res => rec.onstop = res);
+  rec.start(100);
+  const t0 = performance.now(); let spoke = false, quietSince = 0;
+  await new Promise(res => {
+    const tick = () => {
+      if (rec.state !== "recording") return res();
+      an.getByteTimeDomainData(data);
+      let peak = 0; for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+      $("level").style.width = Math.min(100, peak * 2) + "%";
+      const now = performance.now();
+      if (peak > 14) { spoke = true; quietSince = 0; } else if (spoke && !quietSince) quietSince = now;
+      if ((spoke && quietSince && now - quietSince > 1300) || now - t0 > maxMs || (!spoke && now - t0 > 6000)) { rec.stop(); return res(); }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  await done; src.disconnect(); $("level").style.width = "0";
+  return spoke ? new Blob(chunks, { type: rec.mimeType || "audio/webm" }) : null;
+}
+
+function browserSTT() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return Promise.reject(new Error("no speech recognition"));
+  return new Promise((res, rej) => {
+    const r = new SR(); r.lang = "en-IN"; r.interimResults = false; r.maxAlternatives = 1;
+    r.onresult = e => res(e.results[0][0].transcript); r.onerror = e => rej(new Error(e.error)); r.onend = () => res("");
+    r.start();
+  });
+}
+
+async function hear() {
+  status("listening…");
+  try {
+    if (sarvam && mic && window.MediaRecorder) {
+      const blob = await recordClip();
+      if (!blob) return "";
+      status("transcribing (Sarvam)…");
+      const r = await fetch("/api/voice/stt", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+      if (r.ok) return (await r.json()).transcript || "";
+    }
+    status("listening (browser)…");
+    return await browserSTT();
+  } catch (e) { return ""; }
+  finally { status(""); }
+}
+
+async function decide(transcript) {
+  const e = current; if (!e) return;
+  const code = String(e.code || e.args_digest || "").slice(0, 4).toLowerCase();
+  e._mine = true;
+  if (isReject(transcript) && !/approv/i.test(transcript)) {
+    await fetch(`/api/approvals/${e.id}`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ approved: false }) });
+    await speak("Rejected. The merge will not happen. Thank you.");
+    return endCall({ ok: false, text: "REJECTED by voice" });
+  }
+  const heard = parseCode(transcript);
+  const r = await fetch("/api/approvals/voice", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code: heard, transcript }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) {
+    await speak(`Approved. Bound to digest ${spell(code)}. Any change to the target will be blocked.`);
+    return endCall({ ok: true, text: `APPROVED · bound to digest ${code}` });
+  }
+  e._mine = false;
+  log("bad", `not approved: ${esc(j.detail || r.status)}`);
+  if (++tries >= 3) { $("typed").hidden = false; await speak("I could not match the code. Type it on screen, or reject."); return; }
+  await speak(heard ? `I heard ${spell(heard)}. That does not match. Approval not given. Say approve, then the code ${spell(code)}.`
+    : `I did not catch a code. Say approve, then ${spell(code)}. Or say reject.`);
+  converse();
+}
+
+async function converse() {
+  if (busyListening || !current) return;
+  busyListening = true;
+  const t = await hear();
+  busyListening = false;
+  if (!current) return;
+  if (!t) { log("say", "(silence)"); if (!mic && !(window.SpeechRecognition || window.webkitSpeechRecognition)) { $("typed").hidden = false; return; }
+    if (++tries >= 3) { $("typed").hidden = false; return; } await speak("Sorry, I did not hear you. Say approve and the code, or reject."); return converse(); }
+  log("heard", `you: “${esc(t)}”`);
+  await decide(t);
+}
+
+async function answer() {
+  if (!current) return;
+  if (!armed) await arm();
+  ringtone(false);
+  const e = current, d = describe(e), code = String(e.code || e.args_digest || "").slice(0, 4).toLowerCase();
+  $("log").innerHTML = ""; $("typed").hidden = true;
+  $("facts").innerHTML = `<dt>Who</dt><dd>${esc(d.agent)} sub-agent, delegated by ${esc(d.by)} for INC-4471</dd>
+    <dt>What</dt><dd>${esc(d.what)}</dd><dt>Why</dt><dd>${esc(d.why)}</dd>
+    <dt>Digest</dt><dd><code>${esc(String(e.args_digest || "").slice(0, 16))}…</code></dd>`;
+  $("code").textContent = code; $("nato").textContent = spell(code);
+  show("s-call");
+  callStart = Date.now(); clearInterval(clockTimer);
+  clockTimer = setInterval(() => { const s = Math.floor((Date.now() - callStart) / 1000); $("call-timer").textContent = `${String(s / 60 | 0).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }, 500);
+  const script = `This is ClearGate, calling about incident I N C 4 4 7 1. The ${d.agent} sub-agent, delegated by the ${d.by}, wants to ${d.what}. ` +
+    `${d.why} The approval is bound to code ${spell(code)}. Hearing the code is not an approval: the engineer must repeat it. To approve, say: approve ${spell(code)}. To stop it, say reject.`;
+  log("say", `ClearGate: ${esc(script)}`);
+  await speak(script);
+  if (current === e) converse();
+}
+
+async function reject() {
+  const e = current; if (!e) return;
+  e._mine = true;
+  await fetch(`/api/approvals/${e.id}`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approved: false }) });
+  endCall({ ok: false, text: "REJECTED from the call screen" });
+}
+
+async function typedApprove() {
+  const c = $("typed-code").value.trim().toLowerCase();
+  if (c) await decide(`approve ${c}`);
+}
+
+async function reportIncident() {
+  const btn = $("report"), out = $("report-log");
+  if (!armed) await arm();
+  btn.disabled = true; out.innerHTML = "";
+  await speak("ClearGate. Describe the incident after the tone.");
+  const t = await hear();
+  btn.disabled = false;
+  if (!t) { log("bad", "Did not catch that. Try again.", out); return; }
+  log("heard", `you: “${esc(t)}”`, out);
+  const r = await fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: t }) });
+  const j = await r.json().catch(() => ({}));
+  if (r.ok) { log("ok", `Incident opened · run ${esc(j.run_id)}`, out); await speak("Got it. The agent team is on it. I will call you if they need your approval."); }
+  else { log("bad", esc(j.detail || `error ${r.status}`), out); await speak(r.status === 409 ? "A run is already in progress." : "I could not start the run."); }
+}
+
+let runId = null, ringDebounce = null, lastSse = 0;
+function newRun(id) {
+  if (id === runId) return;
+  runId = id; pending.clear(); resolved.clear(); if (current) endCall();
+}
+function ingest(e) {
+  if (e.type === "run_start") newRun(e.run_id);
+  else if (e.type === "approval_pending" && !resolved.has(e.id)) pending.set(e.id, e);
+  else if (e.type === "approval_resolved" && !resolved.has(e.id)) {
+    resolved.add(e.id); pending.delete(e.id);
+    if (current && current.id === e.id && !current._mine)
+      endCall({ ok: e.approved, text: `${e.approved ? "APPROVED" : "REJECTED"} by ${e.approver} via ${e.via}` });
+  }
+  clearTimeout(ringDebounce); ringDebounce = setTimeout(maybeRing, 250);
+}
+
+function connect() {
+  const es = new EventSource("/events");
+  es.onopen = () => { $("dot").classList.add("on"); $("conn").textContent = "live"; };
+  es.onerror = () => { $("conn").textContent = "polling"; };
+  es.onmessage = m => { lastSse = Date.now(); ingest(JSON.parse(m.data)); };
+}
+
+// Quick tunnels can buffer SSE, so poll as well; ingest() is idempotent.
+async function poll() {
+  try {
+    const r = await fetch("/api/voice/escalations", { cache: "no-store" });
+    if (r.ok) {
+      const j = await r.json();
+      $("dot").classList.add("on");
+      if (Date.now() - lastSse > 5000) $("conn").textContent = "live (polling)";
+      if (j.run_id) newRun(j.run_id);
+      j.resolved.forEach(e => ingest({ ...e, type: "approval_resolved" }));
+      j.pending.forEach(e => ingest({ ...e, type: "approval_pending" }));
+    }
+  } catch (e) { $("dot").classList.remove("on"); $("conn").textContent = "offline"; }
+  setTimeout(poll, 1500);
+}
+
+$("arm").onclick = arm;
+$("answer").onclick = answer;
+$("decline").onclick = reject;
+$("hangup").onclick = reject;
+$("talk").onclick = () => converse();
+$("typed-go").onclick = typedApprove;
+$("report").onclick = reportIncident;
+fetch("/api/voice/status").then(r => r.json()).then(j => { sarvam = !!j.sarvam; }).catch(() => {});
+if (window.speechSynthesis) speechSynthesis.getVoices();
+connect();
+poll();
+</script>
+</body>
+</html>
