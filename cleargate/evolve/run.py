@@ -2,6 +2,8 @@
 
     cleargate evolve [--target stub|agntid] [--gens N] [--seed S] [--pop P] [--policy policy.yaml]
                      [--set attacks/evolved.json] [--html docs/evolution.html]
+    cleargate evolve --until 17:30 | --budget-min N [--pause SEC]    (all-day mode, resumable)
+    cleargate evolve --totals
 
 Generation 0 is the attack catalog. Each later generation mutates the cases the enforcer stopped
 (boundary values, branch spellings, other destinations, rewordings, tool aliases). A case the policy
@@ -14,6 +16,7 @@ finds a gap explores up to --gens.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import sys
@@ -37,7 +40,25 @@ SET_FIELDS = ("id", "parent_id", "root_id", "gen", "channel", "tool", "args", "t
               "expected_control", "mutates", "destructive", "mutation", "key")
 
 
+LEGIT_CACHE: dict[tuple[str, str], tuple[float, tuple[bool, str]]] = {}
+LEGIT_TTL = {"stub": float("inf"), "agntid": 900.0}
+CACHE_LEGIT = False
+
+
 def legit_ok(target: str, policy_path: Path) -> tuple[bool, str]:
+    """Cached per policy content in all-day mode, so a long run does not write a record per generation."""
+    if not CACHE_LEGIT:
+        return _legit_ok(target, policy_path)
+    key = (target, hashlib.sha256(policy_path.read_bytes()).hexdigest())
+    hit = LEGIT_CACHE.get(key)
+    if hit and time.time() - hit[0] < LEGIT_TTL[target]:
+        return hit[1]
+    out = _legit_ok(target, policy_path)
+    LEGIT_CACHE[key] = (time.time(), out)
+    return out
+
+
+def _legit_ok(target: str, policy_path: Path) -> tuple[bool, str]:
     from cleargate.gate import run_legit
 
     try:
@@ -106,7 +127,7 @@ def merge_set(path: Path, cases: list[dict[str, Any]], run_id: str) -> int:
     return len(out["cases"])
 
 
-def main(argv: list[str] | None = None) -> int:
+def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="cleargate evolve", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target", choices=["stub", "agntid"], default="stub")
@@ -114,10 +135,34 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--pop", type=int, default=40, help="cases carried into the next generation")
     p.add_argument("--policy", type=Path, default=None)
-    p.add_argument("--set", dest="set_path", type=Path, default=EVOLVED_SET)
-    p.add_argument("--html", type=Path, default=HTML)
-    a = p.parse_args(argv)
+    p.add_argument("--set", dest="set_path", type=Path, default=None, help="default attacks/evolved.json")
+    p.add_argument("--html", type=Path, default=None, help="default docs/evolution.html")
+    p.add_argument("--until", metavar="HH:MM", help="all-day mode: keep running new seeds until this local time")
+    p.add_argument("--budget-min", type=float, help="all-day mode: keep running new seeds for N minutes")
+    p.add_argument("--pause", type=float, default=30.0, help="all-day mode: seconds between runs")
+    p.add_argument("--totals", action="store_true", help="print the cumulative totals headline and exit")
+    return p
 
+
+def main(argv: list[str] | None = None) -> int:
+    a = parser().parse_args(argv)
+    from cleargate.evolve import daylong
+
+    if a.totals:
+        return daylong.print_totals()
+    if a.until or a.budget_min:
+        return daylong.loop(a)
+    a.set_path = a.set_path or EVOLVED_SET
+    a.html = a.html or HTML
+    code, summary = run_once(a)
+    if summary:
+        daylong.record_run(summary)
+    return code
+
+
+def run_once(a: argparse.Namespace, scratch: bool = False) -> tuple[int, dict[str, Any] | None]:
+    """One evolve run. `scratch` (all-day mode) keeps the evolved policy inside the run directory
+    instead of policies/, and drops the run directory when the run found no gap."""
     from cleargate.config import Settings
     from cleargate.gate import load_catalog, rel
 
@@ -130,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     prompt = catalog["task_prompt"].strip()
     base_raw = yaml.safe_load(policy_path.read_text())
     stub = a.target == "stub"
-    evolved_path = ROOT / "policies" / f"evolved-{run_id}.yaml"
+    evolved_path = (out_dir / "evolved.yaml") if scratch else ROOT / "policies" / f"evolved-{run_id}.yaml"
     header = (f"# Evolved copy of {rel(policy_path)} written by `cleargate evolve` run {run_id}.\n"
               f"# Rules prefixed by the fuzzer close gaps it found; policy.yaml itself is never edited.\n")
     applied: list[dict[str, Any]] = []
@@ -170,7 +215,10 @@ def main(argv: list[str] | None = None) -> int:
         status = score(a.target, cases, current, prompt)
         if status != "ready":
             print(f"AgntID {status}", file=sys.stderr)
-            return 2
+            if scratch:
+                import shutil
+                shutil.rmtree(out_dir, ignore_errors=True)
+            return 2, None
         evaluated += cases
         gaps = [c for c in cases if c["decision"] == ALLOWED]
         kept = cases if gen == 0 else select(cases, a.pop, rng, covered)
@@ -301,7 +349,23 @@ def main(argv: list[str] | None = None) -> int:
     print(f"lineage: {rel(out_dir / 'lineage.json')}")
     print(f"regression set: {rel(a.set_path)} ({total} cases)")
     print(f"tree: {rel(a.html)}")
-    return 0
+    summary = {
+        "run": run_id, "target": a.target, "seed": a.seed, "generations": len(generations),
+        "cases_evaluated": len(evaluated), "case_keys": [c["key"] for c in evaluated],
+        "gaps": [{"key": g["key"], "closed": bool(g.get("closing_rule")) and stub} for g in all_gaps],
+        "rules": [repair_signature(q["rule"]) for q in applied + checklist + rejected + pruned],
+        "rules_applied": len(applied), "stopped": stopped,
+    }
+    if scratch and not all_gaps:
+        import shutil
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return 0, summary
+
+
+def repair_signature(rule: dict[str, Any]) -> str:
+    raw = yaml.safe_dump({"verb": rule["verb"], "tools": sorted(rule["tools"]), "where": rule.get("where") or {}},
+                         sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 if __name__ == "__main__":
