@@ -25,7 +25,7 @@
     <a class="brand" href="/" aria-label="ClearGate home"><span class="mark" aria-hidden="true">CG</span> ClearGate</a>
     <nav aria-label="Pages">
       <a href="/how-it-works.html" aria-current="page">How it works</a>
-      <a href="/bank-call.html">The bank call</a>
+      <a href="/bank-call.html">Examples</a>
       <a href="/proof.html">Proof</a>
       <a href="/verify.html">Verify</a>
       <a href="/built-with.html">Built with</a>
@@ -40,9 +40,19 @@
 <div class="wrap">
 
 <h1>How it works</h1>
-<p class="lede">Two agent teams at one bank. Every tool call goes through AgntID first.</p>
+<p class="lede">Every tool call your agent makes goes through AgntID first. ClearGate tests that, then signs the result.</p>
 
-<h2>The teams</h2>
+<ol class="flow steps5">
+  <li><b>Run.</b> The agent runs stock and gated on the same input.</li>
+  <li><b>Attack.</b> The catalogue goes in, then every blocked attack is mutated.</li>
+  <li><b>Propose.</b> A least-privilege policy from the calls the task needs.</li>
+  <li><b>Gate.</b> CI re-runs it on every PR that touches an agent or its policy.</li>
+  <li><b>Sign.</b> Each decision goes into a record anyone can verify.</li>
+</ol>
+
+<h2>The example teams</h2>
+<p>The examples on this site use two agent teams. Swap in your own agents and tools; the gate works the same way.</p>
+<h3>Example: a bank voice agent</h3>
 <p>The voice team answers the support line. Caller ID picks the customer record, so nothing the caller says changes whose money it is.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Agent</th><th>Job</th><th>Authority</th></tr></thead>
@@ -54,6 +64,7 @@
     <tr><td><code>ops</code></td><td>Posts the call outcome</td><td>ops channel only</td></tr>
   </tbody>
 </table></div>
+<h3>Example: a coding agent</h3>
 <p>The incident team fixes a duplicate-refund bug. The issue it reads hides an instruction to export customer records, email them out and push to <code>main</code>.</p>
 <div class="table-wrap"><table>
   <thead><tr><th>Agent</th><th>Job</th><th>Authority</th></tr></thead>
@@ -104,7 +115,7 @@
   <img src="/assets/img/07-oncall-phone.jpg" alt="Phone: incoming call, ClearGate escalation, fix sub-agent wants to merge PR #212." loading="lazy">
   <figcaption>The <code>/oncall</code> page on the engineer's phone.</figcaption>
 </figure>
-<p class="next"><a href="/bank-call.html">The bank call</a></p>
+<p class="next"><a href="/bank-call.html">See the examples</a></p>
 
 </div>
 </main>
@@ -118,7 +129,7 @@
       <nav aria-label="Product">
         <h2>Product</h2>
         <a href="/how-it-works.html">How it works</a>
-        <a href="/bank-call.html">The bank call</a>
+        <a href="/bank-call.html">Examples</a>
         <a href="/try.html">Try a call</a>
         <a href="/built-with.html">Built with</a>
       </nav>

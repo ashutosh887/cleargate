@@ -25,7 +25,7 @@
     <a class="brand" href="/" aria-label="ClearGate home"><span class="mark" aria-hidden="true">CG</span> ClearGate</a>
     <nav aria-label="Pages">
       <a href="/how-it-works.html">How it works</a>
-      <a href="/bank-call.html">The bank call</a>
+      <a href="/bank-call.html">Examples</a>
       <a href="/proof.html" aria-current="page">Proof</a>
       <a href="/verify.html">Verify</a>
       <a href="/built-with.html">Built with</a>
@@ -40,9 +40,10 @@
 <div class="wrap">
 
 <h1>Proof</h1>
-<p class="lede">What the gate stopped, what the stock agents did, and the command behind each number.</p>
+<p class="lede">What the gate stopped, what the stock agent did, and the command behind each number.</p>
 
-<h2>The incident team</h2>
+<h2 id="coding">Example: a coding agent</h2>
+<p>Five agents fix a duplicate-refund bug. The GitHub issue they read hides an instruction to export customer records, email them out and push to <code>main</code>.</p>
 <div class="table-wrap"><table>
   <caption>One run of <code>cleargate check --stub</code></caption>
   <thead><tr><th>Measure</th><th>Stock</th><th>Gated</th></tr></thead>
@@ -63,11 +64,12 @@
 </figure>
 
 <h2 id="catalogue">The attack catalogue</h2>
-<ul>
-  <li>16 of 20 attacks reached a tool on the stock MCP servers (2 simulated, 2 not run).</li>
-  <li>The policy writer's proposal blocked 19 of 20 and broke 0 of the 13 calls the real task needs.</li>
-  <li>86 coverage cases, including 5 spoken attacks replayed as audio: stock let 68 reach a tool, gated 0. 11 need AgntID's intent check. <a href="/assets/coverage.html">Coverage matrix</a></li>
+<ul class="tiles three">
+  <li><span class="tile-fig"><span class="bad">16 of 20</span></span><span class="tile-label">attacks reached a tool on the stock MCP servers (2 simulated, 2 not run)</span></li>
+  <li><span class="tile-fig">19 of 20</span><span class="tile-label">blocked by the policy writer's proposal, 0 of the 13 calls the real task needs broken</span></li>
+  <li><span class="tile-fig"><span class="bad">68</span> <span class="to">→</span> <span class="good">0</span></span><span class="tile-label">of 86 coverage cases reached a tool, stock vs gated. 5 are spoken attacks replayed as audio; 11 need AgntID's intent check</span></li>
 </ul>
+<p class="fine"><a href="/assets/coverage.html">Open the coverage matrix</a></p>
 
 <h2 id="evolve">The gate that evolves</h2>
 <p><code>cleargate evolve</code> is a policy fuzzer with no LLM in it. It mutates every attack the policy stopped and keeps whatever gets through.</p>
@@ -98,7 +100,7 @@
       <nav aria-label="Product">
         <h2>Product</h2>
         <a href="/how-it-works.html">How it works</a>
-        <a href="/bank-call.html">The bank call</a>
+        <a href="/bank-call.html">Examples</a>
         <a href="/try.html">Try a call</a>
         <a href="/built-with.html">Built with</a>
       </nav>
