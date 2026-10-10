@@ -28,9 +28,36 @@ _hits: dict[str, list[float]] = {}
 _lock = threading.Lock()
 
 
+MAX_BODY = 4096
+
+
+def read_json(headers, rfile) -> tuple[int, dict]:
+    """(0, body) or (status, error body). Rejects missing/negative/oversized lengths before reading."""
+    try:
+        size = int(headers.get("Content-Length") or 0)
+    except ValueError:
+        return 400, {"error": "Bad Content-Length."}
+    if size < 0 or size > MAX_BODY:
+        return 413, {"error": f"Request body over {MAX_BODY} bytes."}
+    try:
+        body = json.loads(rfile.read(size) or b"{}") if size else {}
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError are both ValueError
+        return 400, {"error": "Send JSON: {\"text\": \"...\"}"}
+    if not isinstance(body, dict):
+        return 400, {"error": "Send a JSON object: {\"text\": \"...\"}"}
+    return 0, body
+
+
+def pick_phone(value) -> str:
+    return value if isinstance(value, str) and value in PHONES else DEFAULT_PHONE
+
+
 def allowed(ip: str) -> bool:
     now = time.time()
     with _lock:
+        if len(_hits) > 5000:  # bound memory on a long-lived warm instance
+            for k in [k for k, v in _hits.items() if not v or now - v[-1] >= WINDOW]:
+                del _hits[k]
         recent = [t for t in _hits.get(ip, []) if now - t < WINDOW]
         if len(recent) >= LIMIT:
             _hits[ip] = recent
@@ -93,27 +120,27 @@ class handler(BaseHTTPRequestHandler):
         ip = (self.headers.get("x-forwarded-for") or self.client_address[0]).split(",")[0].strip()
         if not allowed(ip):
             return self._send(429, {"error": "Too many calls from this address. Try again in a few minutes."})
-        try:
-            size = min(int(self.headers.get("Content-Length") or 0), 4096)
-            body = json.loads(self.rfile.read(size) or b"{}")
-        except (ValueError, json.JSONDecodeError):
-            return self._send(400, {"error": "Send JSON: {\"text\": \"...\"}"})
+        status, body = read_json(self.headers, self.rfile)
+        if status:
+            return self._send(status, body)
         if body.get("domain") == "devops":
             preset = str(body.get("preset") or "")
             if preset not in DEVOPS_PRESETS:
                 return self._send(400, {"error": f"Unknown preset. Pick one of: {', '.join(DEVOPS_PRESETS)}."})
             try:
                 return self._send(200, devops(preset))
-            except Exception as exc:
-                return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+            except Exception as exc:  # log the detail; the page gets a plain message, no paths or internals
+                print(f"call devops: {type(exc).__name__}: {str(exc)[:300]}", file=sys.stderr)
+                return self._send(500, {"error": "The run failed on the server. Try again."})
         text = str(body.get("text") or "").strip()[:MAX_TEXT]
         if not text:
             return self._send(400, {"error": "Say or type what the caller says."})
-        phone = body.get("phone") if body.get("phone") in PHONES else DEFAULT_PHONE
+        phone = pick_phone(body.get("phone"))
         try:
             return self._send(200, turn(text, phone))
         except Exception as exc:  # the page shows the error instead of a blank pane
-            return self._send(500, {"error": f"{type(exc).__name__}: {exc}"})
+            print(f"call: {type(exc).__name__}: {str(exc)[:300]}", file=sys.stderr)
+            return self._send(500, {"error": "The call failed on the server. Try again."})
 
     def do_GET(self) -> None:
         from urllib.parse import parse_qs, urlparse

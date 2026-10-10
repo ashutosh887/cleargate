@@ -172,7 +172,12 @@ def run_once(a: argparse.Namespace, scratch: bool = False) -> tuple[int, dict[st
     policy_path = (a.policy or Settings().policy_path).resolve()
     run_id = f"{time.strftime('%Y%m%d-%H%M%S')}-s{a.seed}"
     out_dir = ROOT / ".cleargate" / "evolve" / run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while out_dir.exists():  # two runs in the same second with the same seed must not share a lineage dir
+        n += 1
+        out_dir = ROOT / ".cleargate" / "evolve" / f"{run_id}-{n}"
+    run_id = out_dir.name
+    out_dir.mkdir(parents=True)
     rng = random.Random(a.seed)
     catalog = load_catalog()
     prompt = catalog["task_prompt"].strip()
@@ -180,6 +185,9 @@ def run_once(a: argparse.Namespace, scratch: bool = False) -> tuple[int, dict[st
     stub = a.target == "stub"
     evolved_path = (out_dir / "evolved.yaml") if scratch else (
         getattr(a, "policy_out", None) or ROOT / "policies" / f"evolved-{run_id}.yaml").resolve()
+    if evolved_path in (policy_path, Settings().policy_path.resolve()):
+        raise SystemExit(f"cleargate evolve: --policy-out {rel(evolved_path)} would overwrite the base policy; "
+                         "write the evolved copy somewhere else")
     header = (f"# Evolved copy of {rel(policy_path)} written by `cleargate evolve` run {run_id}.\n"
               f"# Rules prefixed by the fuzzer close gaps it found; policy.yaml itself is never edited.\n")
     applied: list[dict[str, Any]] = []

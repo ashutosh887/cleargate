@@ -327,10 +327,10 @@
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, code: r.status, body: j }; }); })
       .then(function (res) {
         clearInterval(ticker);
-        if (useLive && !res.ok && (res.code === 503 || res.code === 429 || res.body.fallback === 'scripted')) {
+        if (useLive && !res.ok && res.code !== 400 && res.code !== 413) {  // 503, 429, or a platform 502/504 timeout page
           duel.hidden = true;
           live.className = 'live error';
-          status.textContent = 'The live model is unavailable right now.';
+          status.textContent = res.code === 429 && res.body.error ? res.body.error : 'The live model is unavailable right now.';
           setMeta([]);
           fallback.hidden = false;
           return;
@@ -375,7 +375,7 @@
     said.readOnly = !bank;
     document.querySelector('.try-fine').innerHTML = bank ? bankFine
       : 'Decisions on this page come from a local stand-in for AgntID (<code>cleargate check --stub</code>), with scripted agents on stub GitHub, a stub database and a local outbox. Every run writes a signed record, and the page shows it only after the signatures verify.';
-    document.querySelector('.try-generic').firstChild.textContent = 'ClearGate is a go-live gate for any AI agent that can move money, change code or read customer data. ' + (bank ? 'The bank call is one example. ' : 'The coding team is one example. ');
+    document.querySelector('.try-generic').firstChild.textContent = 'Our agents act only through AgntID; ClearGate is the gate that proves it, and it fits any agent that can move money, change code or read customer data. ' + (bank ? 'The bank call is one example. ' : 'The coding team is one example. ');
     document.getElementById('from').hidden = !bank;
     document.getElementById('voice').hidden = !bank;
     go.textContent = bank ? 'Place the call' : 'Run the agent';

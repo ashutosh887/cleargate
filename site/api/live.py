@@ -58,6 +58,30 @@ _day = {"date": "", "count": 0}
 _lock = threading.Lock()
 
 
+MAX_BODY = 4096
+
+
+def read_json(headers, rfile) -> tuple[int, dict]:
+    """(0, body) or (status, error body). Rejects missing/negative/oversized lengths before reading."""
+    try:
+        size = int(headers.get("Content-Length") or 0)
+    except ValueError:
+        return 400, {"error": "Bad Content-Length."}
+    if size < 0 or size > MAX_BODY:
+        return 413, {"error": f"Request body over {MAX_BODY} bytes."}
+    try:
+        body = json.loads(rfile.read(size) or b"{}") if size else {}
+    except ValueError:  # JSONDecodeError and UnicodeDecodeError are both ValueError
+        return 400, {"error": "Send JSON: {\"text\": \"...\"}"}
+    if not isinstance(body, dict):
+        return 400, {"error": "Send a JSON object: {\"text\": \"...\"}"}
+    return 0, body
+
+
+def pick_phone(value) -> str:
+    return value if isinstance(value, str) and value in PHONES else DEFAULT_PHONE
+
+
 class ModelUnavailable(RuntimeError):
     pass
 
@@ -74,6 +98,9 @@ def admit(ip: str) -> str | None:
             _day.update(date=today, count=0)
         if _day["count"] >= DAILY_CAP:
             return "Live calls are at today's limit. Run with scripted agents instead."
+        if len(_hits) > 5000:  # bound memory on a long-lived warm instance
+            for k in [k for k, v in _hits.items() if not v or now - v[-1] >= WINDOW]:
+                del _hits[k]
         recent = [t for t in _hits.get(ip, []) if now - t < WINDOW]
         if len(recent) >= LIMIT:
             _hits[ip] = recent
@@ -133,39 +160,49 @@ def record_text(path: str | None) -> str:
         return ""
 
 
+# Per-request state lives on the worker thread, so the bank hooks below are installed once per process and
+# concurrent requests on a warm instance never see each other's brains, deadline or call objects.
+_lane = threading.local()
+
+
+def _make(_settings):  # stock and gated start on different models: free tiers cap requests per model per minute
+    brain = GeminiBrain(_lane.key, _lane.deadline, MODELS[_lane.index % len(MODELS)])
+    _lane.brains.append(brain)
+    return brain
+
+
+def _live_handle(gate, brain, session, transcript):  # the caller's reply follows what the bank executed
+    out = _handle(gate, brain, session, transcript)
+    mode, bus = _lane.mode, _lane.call.bus
+    out["refunds"] = [{"payment_id": (e.get("args") or {}).get("payment_id"),
+                       "amount_inr": int((e.get("args") or {}).get("amount_inr") or 0),
+                       "destination_account": str((e.get("args") or {}).get("destination_account")),
+                       "ok": bool(e.get("executed")), "error": "" if e.get("executed") else (e.get("rule") or "refused")}
+                      for e in bus.history
+                      if e.get("type") == "decision" and e.get("mode") == mode and e.get("kind") == Kind.CALL
+                      and e.get("tool") == bank.REFUND and e.get("verb") != Verb.ESCALATE]
+    return out
+
+
+bank.make_brain = _make  # the bank team asks for its brain here; this module owns the process
+bank.handle = _live_handle
+bank.SYSTEMS = SYSTEMS
+
+
 def turn(text: str, phone: str, key: str) -> dict:
     deadline = time.time() + BUDGET
     brains: list[GeminiBrain] = []
-
-    lane = threading.local()
-
-    def make(_settings):  # stock and gated start on different models: free tiers cap requests per model per minute
-        brain = GeminiBrain(key, deadline, MODELS[lane.index % len(MODELS)])
-        brains.append(brain)
-        return brain
-
-    def handle(gate, brain, session, transcript):  # the caller's reply follows what the bank executed
-        out = _handle(gate, brain, session, transcript)
-        mode = "stock" if lane.index == 0 else "gated"
-        out["refunds"] = [{"payment_id": (e.get("args") or {}).get("payment_id"),
-                           "amount_inr": int((e.get("args") or {}).get("amount_inr") or 0),
-                           "destination_account": str((e.get("args") or {}).get("destination_account")),
-                           "ok": bool(e.get("executed")), "error": "" if e.get("executed") else (e.get("rule") or "refused")}
-                          for e in calls[mode].bus.history
-                          if e.get("type") == "decision" and e.get("mode") == mode and e.get("kind") == Kind.CALL
-                          and e.get("tool") == bank.REFUND and e.get("verb") != Verb.ESCALATE]
-        return out
-
-    bank.make_brain = make  # the bank team asks for its brain here; this module owns the process
-    bank.handle = handle
-    bank.SYSTEMS = SYSTEMS
     language = bank.detect_language(text)
-    run_id = time.strftime("%Y%m%d-%H%M%S-live-") + os.urandom(2).hex()
+    run_id = time.strftime("%Y%m%d-%H%M%S-live-") + os.urandom(4).hex()
     calls = {m: bank.Call(stub=True) for m in ("stock", "gated")}  # stock and gated in parallel
 
     def one(mode: str) -> dict:
-        lane.index = 0 if mode == "stock" else 1
-        return calls[mode].run_mode(mode, text, phone, language, run_id)
+        _lane.index, _lane.mode, _lane.call = (0 if mode == "stock" else 1), mode, calls[mode]
+        _lane.key, _lane.deadline, _lane.brains = key, deadline, brains
+        try:
+            return calls[mode].run_mode(mode, text, phone, language, run_id)
+        finally:
+            _lane.key = _lane.call = None  # pool threads die with the pool; drop the key anyway
 
     with ThreadPoolExecutor(2) as pool:
         results = dict(zip(calls, pool.map(one, calls)))
@@ -196,11 +233,9 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_POST(self) -> None:
-        try:
-            size = min(int(self.headers.get("Content-Length") or 0), 4096)
-            body = json.loads(self.rfile.read(size) or b"{}")
-        except (ValueError, json.JSONDecodeError):
-            return self._send(400, {"error": "Send JSON: {\"text\": \"...\"}"})
+        status, body = read_json(self.headers, self.rfile)
+        if status:
+            return self._send(status, body)
         text = str(body.get("text") or "").strip()[:MAX_TEXT]
         if not text:
             return self._send(400, {"error": "Say or type what the caller says."})
@@ -211,7 +246,7 @@ class handler(BaseHTTPRequestHandler):
         refused = admit(ip)
         if refused:
             return self._send(429, {"error": refused, "fallback": "scripted"})
-        phone = body.get("phone") if body.get("phone") in PHONES else DEFAULT_PHONE
+        phone = pick_phone(body.get("phone"))
         try:
             return self._send(200, turn(text, phone, key))
         except Exception as exc:  # model down, out of quota or over time: the page offers the scripted run
