@@ -2,13 +2,11 @@
 
 [![ClearGate gate](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml/badge.svg?branch=main)](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml) [![Try a call](https://img.shields.io/badge/try_a_call-trycleargate.vercel.app-0f1522)](https://trycleargate.vercel.app/try.html) ![Bank attacks that reached the refund tool](https://img.shields.io/badge/bank_attacks_reaching_the_refund_tool-0_of_4_(stand--in)-138a5b)
 
-**AI agents you'd actually trust, and the proof.** We built two agent teams: bank voice support (voice → accounts → payments → ops, in Hindi and English) and a coding team (orchestrator, triage, db, fix, comms). AgntID decides every tool call they make, with seven AgntID controls plus one ClearGate layer (human approval bound to the arguments digest). ClearGate, the go-live gate, attacks each agent beside the same agent with no guardrails, evolves the attacks, proposes the AgntID policy for the engineer to apply, gates CI and signs a record anyone can verify offline.
-
-Works for any agent that moves money, changes code or touches customer data.
+**A bank voice support agent you'd actually trust, and the proof.** We built a support agent for a bank's failed-payment line. It takes calls in Hindi and English and works as a team: voice → accounts → payments → ops. It can refund real money, so AgntID decides every tool call it makes, with seven AgntID controls plus one ClearGate layer (human approval bound to the arguments digest). ClearGate, our go-live gate, attacks it beside the same agent with no guardrails, evolves the attacks, proposes the AgntID policy for the engineer to apply, gates CI and signs a record anyone can verify offline. The same gate runs on a second agent, a coding team that fixes a payments bug (orchestrator, triage, db, fix, comms), and on any agent that moves money, changes code or touches customer data.
 
 **The agent acts. AgntID decides. The engineer signs.**
 
-It is for the platform or security team that has to sign off before an agent with real tools goes to production. A prompt that says "don't" is not evidence. A record of what the agent tried, what reached a tool and who approved it is.
+It is for the platform or security team that has to sign off before an agent with real tools goes to production. A prompt that says "don't" proves nothing. A record of what the agent tried, what reached a tool and who approved it does.
 
 ## What it does
 
@@ -17,7 +15,7 @@ It is for the platform or security team that has to sign off before an agent wit
 - **A proposed policy.** `cleargate propose-policy` writes the tightest configuration that still lets every in-task call through. The engineer applies it in the AgntID portal. ClearGate never edits it there.
 - **A CI gate.** A GitHub Action re-runs the attacks and the legit task on every pull request that touches agents or policy, and fails the check if an attack reaches a tool.
 - **Human approval that survives a restart.** A risky call waits for a person, and the approval is bound to the SHA-256 digest of the exact arguments and spent once. With `--durable` the pending call is a receipt on disk, so the process can exit and resume later.
-- **A signed record.** Every decision lands in a hash-chained, Ed25519-signed log. `verify.py` checks it with no keys and no network, and `cleargate evidence` packs it into a folder for a go-live review: evidence for a review, not a compliance claim.
+- **A signed record.** Every decision lands in a hash-chained, Ed25519-signed log. `verify.py` checks it with no keys and no network, and `cleargate evidence` packs it into a folder for a go-live review. It is evidence for a review, not a compliance claim.
 
 The same gate fits banking and payments agents that refund or transfer, support agents that issue credits, DevOps agents that branch, merge and deploy, and agents that read patient, claim, payroll or employee records. This repo ships two worked examples: a bank's voice support agent and a coding agent team that fixes a payments incident.
 
@@ -44,7 +42,7 @@ https://trycleargate.vercel.app/try.html has two tabs:
 - **Bank support agent.** Type a caller's line or speak it, in English or Hinglish.
 - **Coding agent.** Five presets: `fix-refunds` (the legit task), `issue-injection`, `merge-no-approval`, `db-overreach` and `loosen-policy`.
 
-Each run plays step by step, stock and gated side by side, with the decision and rule for every call and the run's round-trip time. Every run writes a signed record, and the page shows it only after the signatures verify. The agents are scripted by default. You can pick a live Gemini model instead; if the model is unavailable, the page offers the same call on the scripted agents. Decisions come from the local stand-in, not AgntID. The bank policy includes a ₹15,000 monthly refund ceiling per customer, which only the stand-in enforces, because it needs the month's total rather than one call's arguments.
+Each run plays step by step, stock and gated side by side, with the decision and rule for every call and the run's round-trip time. Every run writes a signed record, and the page shows it only after the signatures verify. The agents are scripted by default. You can pick a live Gemini model instead. If the model is unavailable, the page offers the same call on the scripted agents. Decisions come from the local stand-in, not AgntID. The bank policy includes a ₹15,000 monthly refund ceiling per customer, which only the stand-in enforces, because it needs the month's total rather than one call's arguments.
 
 ## Quickstart
 

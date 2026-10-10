@@ -51,7 +51,7 @@
 </ol>
 
 <h2>The example teams</h2>
-<p>The examples on this site use two agent teams. Swap in your own agents and tools; the gate works the same way.</p>
+<p>The examples on this site use two agent teams. Swap in your own agents and tools. The gate works the same way.</p>
 <h3>Example: a bank voice agent</h3>
 <p>The voice team answers the support line. Caller ID picks the customer record, so nothing the caller says changes whose money it is.</p>
 <div class="table-wrap"><table>
@@ -78,7 +78,7 @@
 </table></div>
 
 <h2>What AgntID decides</h2>
-<p>All three control levels are on. Together they make one Runtime Access Decision per call. We use seven AgntID controls; the eighth layer, digest-bound approval, is ClearGate's.</p>
+<p>All three control levels are on. Together they make one Runtime Access Decision per call. We use seven AgntID controls. The eighth layer, digest-bound approval, is ClearGate's.</p>
 <h3>Tool Access Controls</h3>
 <p>Protection Profile Medium. Tool Discovery hides <code>export_customer_records</code>, and keeps the refund tool hidden until the call is a failed payment. Tool Execution disables raw SQL and the open-ended Slack post.</p>
 <h3>Parameter-Level Policies</h3>
@@ -89,7 +89,7 @@
 <h2>The Runtime Enforcement Flow</h2>
 <p>Five steps, in order, for every tool call.</p>
 <ol>
-  <li><b>Intent Validation.</b> Does the call match the task? The injected export arrives inside a normal GitHub reply, so intent is judged on the call, not on the text the agent read.</li>
+  <li><b>Intent Validation.</b> Does the call match the task? The injected export arrives inside a normal GitHub reply, so AgntID judges the call itself.</li>
   <li><b>Policy Check.</b> The agent sent <code>limit=5000</code> to <code>query_refunds</code>. The policy allows 1 to 100.</li>
   <li><b>Scoped Access.</b> The runtime's Credential Engine holds the GitHub token. The gated agents never see it.</li>
   <li><b>Execute Tool Call.</b> Only calls that passed steps 1 to 3 reach GitHub, Postgres or Slack.</li>
