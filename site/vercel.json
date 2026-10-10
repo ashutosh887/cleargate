@@ -1,9 +1,46 @@
 {
   "cleanUrls": false,
-  "functions": { "api/call.py": { "includeFiles": "api/_lib/**", "maxDuration": 10 } },
+  "functions": {
+    "api/call.py": {
+      "includeFiles": "api/_lib/**",
+      "maxDuration": 10
+    },
+    "api/voice.py": {
+      "includeFiles": "{api/_lib/**,api/call.py}",
+      "maxDuration": 30
+    }
+  },
   "headers": [
-    { "source": "/assets/audio/(.*)\\.wav", "headers": [{ "key": "Content-Type", "value": "audio/wav" }, { "key": "Accept-Ranges", "value": "bytes" }] },
-    { "source": "/assets/audio/(.*)\\.m4a", "headers": [{ "key": "Content-Type", "value": "audio/mp4" }] },
-    { "source": "/verify/(.*)", "headers": [{ "key": "Content-Type", "value": "text/plain; charset=utf-8" }] }
+    {
+      "source": "/assets/audio/(.*)\\.wav",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "audio/wav"
+        },
+        {
+          "key": "Accept-Ranges",
+          "value": "bytes"
+        }
+      ]
+    },
+    {
+      "source": "/assets/audio/(.*)\\.m4a",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "audio/mp4"
+        }
+      ]
+    },
+    {
+      "source": "/verify/(.*)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
+    }
   ]
 }
