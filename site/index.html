@@ -118,11 +118,11 @@
     </article>
     <article class="example">
       <p class="kicker">Example: a coding agent</p>
-      <h3>A GitHub issue tells the agent team to leak customer data</h3>
+      <h3>Five agents, five levels of authority, and a merge only the engineer can approve</h3>
       <figure class="ex-shot">
-        <img src="/assets/img/03-block-injection.jpg" alt="ClearGate console: the stock team exports customer records and emails them out; behind the gate both calls are stamped BLOCK." loading="lazy">
+        <img src="/assets/img/11-delegation-tree.jpg" alt="ClearGate console: the delegation chain from the engineer to the orchestrator, triage, db and fix agents, each with its own tools and authority." loading="lazy">
       </figure>
-      <p>Five agents fix a real bug. The stock team exports customer records and emails them out. Behind the gate, both calls are blocked and the merge waits for the engineer.</p>
+      <p>A team fixes a real payments bug. Triage and db are read-only, only the fix agent can branch, and the merge waits for the engineer's approval, bound to the exact arguments.</p>
       <p class="ex-stat"><span class="bad">8/8</span> <span class="to">vs</span> <span class="good">0/7</span></p>
       <p class="fine">Out-of-task calls that reached a tool, stock vs gated.</p>
       <p class="ex-link"><a href="/proof.html#coding">See the run</a></p>
