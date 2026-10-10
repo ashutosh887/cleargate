@@ -20,6 +20,7 @@ class Kind(StrEnum):
     CALL = "call"
     APPROVAL = "approval"
     TASK_CLOSE = "task_close"
+    NOTICE = "notice"
 
 
 @dataclass
@@ -40,6 +41,14 @@ class Decision:
     executed: bool = False
     outside_task: bool = False
     result_preview: str = ""
+    # Who decided and on what grounds. `rule` is the deciding rule id (local) or the runtime's
+    # policy name; `real_world_reason` is the real-world control behind it (policy.yaml `reason:`).
+    policy_name: str = ""
+    policy_version: str = ""
+    real_world_reason: str = ""
+    intent_mismatch: str = ""
+    denial_step: str = ""
+    args_digest: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 

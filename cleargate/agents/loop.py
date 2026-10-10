@@ -29,7 +29,7 @@ class Agent:
                 "content": turn.content or None,
                 "tool_calls": [
                     {"id": c.id, "type": "function",
-                     "function": {"name": to_wire_name(c.name), "arguments": json.dumps(c.args)}}
+                     "function": {"name": to_wire_name(c.name), "arguments": json.dumps(c.args)}, **c.extra}
                     for c in turn.tool_calls
                 ],
             })

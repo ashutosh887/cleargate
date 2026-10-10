@@ -7,7 +7,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
-from cleargate.approval import ApprovalBroker, ApprovalRequest
+from cleargate.approval import ApprovalBroker, ApprovalRequest, short_code
 from cleargate.bus import EventBus
 from cleargate.canonical import arguments_digest
 from cleargate.events import Decision, Kind, Verb
@@ -29,6 +29,7 @@ class DelegationContext:
     constraints: tuple[str, ...] = ()
     instruction: str = ""
     tool_allowlist: tuple[str, ...] = ()
+    note: str = ""
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,48 @@ class Outcome:
     details: dict[str, Any] = field(default_factory=dict)
 
 
+def allowlist_for(policy: Policy, agent: str) -> tuple[str, ...]:
+    """Per-sub-agent tool allowlist: `agntid.allowlists.<agent>` if set, else every tool a rule
+    lets this agent call (ALLOW or ESCALATE), minus write tools for a read-only delegation."""
+    explicit = (policy.agntid.get("allowlists") or {}).get(agent)
+    if explicit:
+        return tuple(explicit)
+    read_only = "read-only" in policy.constraints_for(agent)
+    tools: list[str] = []
+    for rule in policy.rules:
+        if rule.verb is Verb.BLOCK or (rule.agents is not None and agent not in rule.agents):
+            continue
+        tools += [t for t in sorted(rule.tools) if not (read_only and t in policy.write_tools)]
+    return tuple(dict.fromkeys(tools))
+
+
+def real_world_reason(policy: Policy, agent: str, tool: str, args: dict[str, Any],
+                      constraints: tuple[str, ...] = ()) -> tuple[str, str]:
+    """(rule id, real-world reason) behind how the local mirror policy classifies this call.
+    When the call is stopped by narrowing or the default, the most specific rule naming
+    the tool supplies the reason, so a runtime denial can still show e.g. PCI DSS Req 3."""
+    verdict = policy.evaluate(agent, tool, args, constraints)
+    if verdict.rule not in ("visible_tools", "default", "delegation:read-only"):
+        return verdict.rule, verdict.reason
+    named = [r for r in policy.rules if tool in r.tools]
+    blocking = next((r for r in named if r.verb is Verb.BLOCK and r.matches(agent, tool, args)), None)
+    if blocking is not None:
+        return blocking.id, blocking.reason
+    if verdict.rule == "delegation:read-only":
+        return verdict.rule, f"Least privilege: {agent} was delegated read-only and {tool} changes state"
+    return verdict.rule, verdict.reason
+
+
+SUBJECT_KEYS = ("pull_number", "issue_number", "order_id", "path", "branch")
+
+
+def same_subject(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """True when two calls act on the same object, judged by the first identifying argument
+    either call carries."""
+    key = next((k for k in SUBJECT_KEYS if k in a or k in b), None)
+    return key is not None and str(a.get(key)) == str(b.get(key))
+
+
 def delegation_id_for(task_id: str, agent: str, instruction: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, f"agntid:{task_id}:{agent}\x1f{instruction}"))
 
@@ -103,7 +146,7 @@ class LocalPolicyStandIn:
         constraints = tuple(dict.fromkeys(parent.constraints + self.policy.constraints_for(agent)))
         return DelegationContext(parent.task_id, agent, parent.chain + (agent,),
                                  delegation_id_for(parent.task_id, agent, instruction),
-                                 parent.delegation_id, constraints, instruction)
+                                 parent.delegation_id, constraints, instruction, allowlist_for(self.policy, agent))
 
     def invoke(self, ctx: DelegationContext, tool: str, args: dict[str, Any], inner: ToolClient,
                approval: ApprovalEvidence | None) -> Outcome:
@@ -148,14 +191,21 @@ class LocalPolicyStandIn:
 
 
 class Recorder:
-    def __init__(self, bus: EventBus, record: SignedRecord, run_id: str, mode: str, source: str):
+    def __init__(self, bus: EventBus, record: SignedRecord, run_id: str, mode: str, source: str,
+                 policy_version: str = ""):
         self.bus = bus
         self.record = record
         self.run_id = run_id
         self.mode = mode
         self.source = source
+        self.policy_version = policy_version
 
     def emit(self, ctx: DelegationContext, kind: Kind, verb: Verb, **fields: Any) -> Decision:
+        fields.setdefault("policy_version", self.policy_version)
+        if "args" in fields:
+            fields.setdefault("args_digest", arguments_digest(fields["args"]))
+        if fields.get("real_world_reason"):
+            fields["meta"] = dict(fields.get("meta") or {}) | {"real_world_reason": fields["real_world_reason"]}
         decision = Decision(kind=kind, verb=verb, source=self.source, run_id=self.run_id, mode=self.mode,
                             task_id=ctx.task_id, agent=ctx.agent, delegation_chain=list(ctx.chain), **fields)
         payload = decision.to_dict()
@@ -237,7 +287,9 @@ class StockClient(BaseGate):
         closed = ctx.task_id in self._closed
         outside = closed or observed.verb in (Verb.BLOCK, Verb.ESCALATE)
         result = self.inner.call(tool, args)
+        why = real_world_reason(self.policy, ctx.agent, tool, args, self.policy.constraints_for(ctx.agent))
         self.recorder.emit(ctx, Kind.CALL, Verb.UNGUARDED, tool=tool, args=args, executed=result.ok,
+                           real_world_reason=why[1] if outside else "",
                            outside_task=outside, rule=("task-closed" if closed else observed.rule) if outside else "",
                            reason="outside the task and it reached the tool" if outside else "",
                            result_preview=result.preview(), meta={"policy_classifies_as": str(observed.verb)})
@@ -257,7 +309,7 @@ class EnforcementClient(BaseGate):
         self.enforcer = enforcer
         self.broker = broker
         self.approval_ttl = approval_ttl
-        self._evidence: dict[tuple[str, str, str], ApprovalEvidence] = {}
+        self._evidence: dict[tuple[str, str, str], tuple[ApprovalEvidence, dict[str, Any]]] = {}
         self._lock = threading.Lock()
 
     def open_task(self, user: str, prompt: str) -> DelegationContext:
@@ -266,64 +318,114 @@ class EnforcementClient(BaseGate):
         ctx = DelegationContext(opened.task_id, "orchestrator", (f"user:{user}", "orchestrator"))
         before, after = tool_stats(self._all_tools), tool_stats(self._visible)
         self.recorder.emit(ctx, Kind.TASK_OPEN, Verb.NARROW, rule="task-open",
-                           reason=f"{before['github_tools']} GitHub tools → {after['github_tools']} for this task",
+                           reason=(f"{before['visible_tools']} tools → {after['visible_tools']} for this task "
+                                   f"({before['github_tools']} → {after['github_tools']} GitHub)"),
                            meta={"before": before, "after": after, "prompt": prompt,
                                  "eligible_tool_count": opened.eligible_tool_count,
                                  "relevant_tool_count": opened.relevant_tool_count,
                                  "visible": [t.name for t in self._visible], **opened.details})
+        if opened.details.get("intent_prepared") is False:
+            self.recorder.emit(ctx, Kind.NOTICE, Verb.NARROW, rule="intent-shortlist-unavailable",
+                               reason=("no prompt-aware shortlist from the runtime "
+                                       f"({opened.details.get('intent_reason') or 'intent not prepared'}); "
+                                       "narrowing is the runtime protection profile only, every call is still checked"),
+                               meta={"intent_reason": opened.details.get("intent_reason", "")})
         return ctx
 
     def delegate(self, parent: DelegationContext, agent: str, instruction: str) -> DelegationContext:
         ctx = self.enforcer.open_delegation(parent, agent, instruction)
+        reason = f"constraints carried: {', '.join(ctx.constraints) or 'none'}"
         self.recorder.emit(ctx, Kind.DELEGATION, Verb.ALLOW, rule="delegation-open",
-                           reason=f"constraints carried: {', '.join(ctx.constraints) or 'none'}",
+                           reason=f"{reason}; {ctx.note}" if ctx.note else reason,
                            meta={"instruction": instruction, "constraints": list(ctx.constraints),
+                                 "tool_allowlist": list(ctx.tool_allowlist), "note": ctx.note,
                                  "delegation_id": ctx.delegation_id, "parent_delegation_id": ctx.parent_delegation_id})
         return ctx
 
     def call(self, ctx: DelegationContext, tool: str, args: dict[str, Any]) -> ToolResult:
-        key = (ctx.task_id, ctx.agent, tool)
+        why = real_world_reason(self.policy, ctx.agent, tool, args, ctx.constraints)
         with self._lock:
-            held = self._evidence.get(key)
-        outcome = self.enforcer.invoke(ctx, tool, args, self.inner, held)
-        if outcome.verb is Verb.ESCALATE and held is None:
-            escalated = self._escalate(ctx, tool, args, outcome)
+            held = self._evidence.get((ctx.task_id, ctx.agent, tool))
+        if held is not None:
+            refusal = self._claims_held_approval(held[0], held[1], tool, args)
+            if refusal:
+                return self._settle(ctx, tool, args, Outcome(Verb.BLOCK, "approval-evidence", refusal,
+                                                             details={"denial_step": "approval"}), None, why,
+                                    outside=True)
+        outcome = self.enforcer.invoke(ctx, tool, args, self.inner, None)
+        evidence: ApprovalEvidence | None = None
+        if outcome.verb is Verb.ESCALATE:
+            escalated = self._escalate(ctx, tool, args, outcome, why)
             if escalated is None:
                 return ToolResult(False, None, "REJECTED by the approver")
-            outcome, held = escalated
-        return self._settle(ctx, tool, args, outcome, held.approver_id if held else None)
+            outcome, evidence = escalated
+        return self._settle(ctx, tool, args, outcome, evidence.approver_id if evidence else None, why)
 
     def close_task(self, ctx: DelegationContext) -> None:
         self.enforcer.close_task(ctx.task_id)
         self.recorder.emit(ctx, Kind.TASK_CLOSE, Verb.BLOCK, rule="task-close",
                            reason="task closed; every later call is blocked")
 
+    def _claims_held_approval(self, held: ApprovalEvidence, held_args: dict[str, Any], tool: str,
+                              args: dict[str, Any]) -> str:
+        """A call on the same subject (same PR, order, path...) as a live approval but with
+        different arguments is the approved request mutated: refuse it. Anything else, including
+        a retry with the same digest after the approval was spent, goes back to a human."""
+        if held.expires_at and float(held.expires_at) < time.time():
+            return ""
+        actual = arguments_digest(args)
+        if actual == held.arguments_digest or not same_subject(held_args, args):
+            return ""
+        return (f"approval is not a bypass: digest mismatch (approved {short_code(held.arguments_digest)}…, "
+                f"this call is {short_code(actual)}…)")
+
     def _settle(self, ctx: DelegationContext, tool: str, args: dict[str, Any], outcome: Outcome,
-                approver: str | None) -> ToolResult:
+                approver: str | None, why: tuple[str, str], outside: bool | None = None) -> ToolResult:
+        details = outcome.details or {}
+        common = dict(tool=tool, args=args, rule=outcome.rule, reason=outcome.reason,
+                      policy_name=str(details.get("policy_name") or outcome.rule),
+                      intent_mismatch=str(details.get("intent_mismatch") or ""),
+                      denial_step=str(details.get("denial_step") or ""),
+                      real_world_reason=why[1], meta=details | {"mirror_rule": why[0]})
         if outcome.verb is Verb.ALLOW and outcome.result is not None:
-            self.recorder.emit(ctx, Kind.CALL, Verb.ALLOW, tool=tool, args=args, rule=outcome.rule,
-                               reason=outcome.reason, executed=outcome.result.ok, approver=approver,
-                               result_preview=outcome.result.preview(), meta=outcome.details)
+            self.recorder.emit(ctx, Kind.CALL, Verb.ALLOW, executed=outcome.result.ok, approver=approver,
+                               result_preview=outcome.result.preview(), **common)
             return outcome.result
-        self.recorder.emit(ctx, Kind.CALL, Verb.BLOCK, tool=tool, args=args, rule=outcome.rule,
-                           reason=outcome.reason, outside_task=True, meta=outcome.details)
+        if outside is None:
+            outside = self._outside_task(ctx, tool, args, outcome)
+        self.recorder.emit(ctx, Kind.CALL, Verb.BLOCK, outside_task=outside, **common)
         return ToolResult(False, None, f"BLOCKED by {outcome.rule}: {outcome.reason}")
 
-    def _escalate(self, ctx: DelegationContext, tool: str, args: dict[str, Any],
-                  first: Outcome) -> tuple[Outcome, ApprovalEvidence] | None:
+    def _outside_task(self, ctx: DelegationContext, tool: str, args: dict[str, Any], outcome: Outcome) -> bool:
+        """The policy decides what the task is. A denial of a call the policy allows or escalates
+        is an in-task denial (the legit work was stopped), which the gate must see as a failure."""
+        if outcome.rule == "task-closed" or outcome.details.get("denial_step") == "task_resolution":
+            return True
+        return self.policy.evaluate(ctx.agent, tool, args, ctx.constraints).verb is Verb.BLOCK
+
+    def _escalate(self, ctx: DelegationContext, tool: str, args: dict[str, Any], first: Outcome,
+                  why: tuple[str, str]) -> tuple[Outcome, ApprovalEvidence] | None:
         digest = arguments_digest(args)
+        details = first.details or {}
         self.recorder.emit(ctx, Kind.CALL, Verb.ESCALATE, tool=tool, args=args, rule=first.rule, reason=first.reason,
-                           meta=first.details | {"operation_id": first.operation_id})
+                           policy_name=str(details.get("policy_name") or first.rule),
+                           denial_step=str(details.get("denial_step") or ""), real_world_reason=why[1],
+                           meta=details | {"operation_id": first.operation_id, "code": short_code(digest),
+                                           "mirror_rule": why[0]})
         answer = self.broker.request(ApprovalRequest(self.recorder.run_id, self.mode, ctx.agent, tool, args, digest,
                                                      first.rule, first.reason, list(ctx.chain)))
+        human = answer.via not in ("auto", "timeout")
         self.recorder.emit(ctx, Kind.APPROVAL, Verb.ALLOW if answer.approved else Verb.BLOCK, tool=tool, args=args,
                            rule=first.rule, approver=answer.approver_id, outside_task=not answer.approved,
-                           reason=f"{'approved' if answer.approved else 'rejected'} via {answer.via}")
+                           real_world_reason=why[1],
+                           reason=(f"{'approved' if answer.approved else 'rejected'} via {answer.via}"
+                                   f"{'' if human else ' (not a human)'}; bound to digest {short_code(digest)}…"),
+                           meta={"via": answer.via, "human": human, "code": short_code(digest)})
         if not answer.approved:
             return None
         now = time.time()
         evidence = ApprovalEvidence(True, "approved", answer.approver_id, uuid.uuid4().hex, first.operation_id,
                                     f"cleargate:{answer.via}", tool, digest, f"{now:.0f}", f"{now + self.approval_ttl:.0f}")
         with self._lock:
-            self._evidence[(ctx.task_id, ctx.agent, tool)] = evidence
+            self._evidence[(ctx.task_id, ctx.agent, tool)] = (evidence, dict(args))
         return self.enforcer.invoke(ctx, tool, args, self.inner, evidence), evidence

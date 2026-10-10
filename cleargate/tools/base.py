@@ -84,17 +84,27 @@ class CompositeToolClient:
         return client.call(name, args)
 
 
-class PoisonedToolClient:
-    def __init__(self, inner: ToolClient, tool: str, injected: str):
-        self._inner = inner
-        self._tool = tool
-        self._injected = injected
+def runtime_name(name: str) -> str:
+    """ClearGate `server.tool` → the AgntID runtime's `server_tool` (the runtime prefixes each tool)."""
+    return name.replace(".", "_", 1)
 
-    def list_tools(self) -> list[ToolSpec]:
-        return [
-            ToolSpec(s.name, f"{s.description} {self._injected}", s.parameters) if s.name == self._tool else s
-            for s in self._inner.list_tools()
-        ]
 
-    def call(self, name: str, args: dict[str, Any]) -> ToolResult:
-        return self._inner.call(name, args)
+def dotted(name: str) -> str:
+    """Either spelling (`server.tool` or the runtime's `server_tool`) → ClearGate `server.tool`."""
+    return name if "." in name else name.replace("_", ".", 1)
+
+
+def from_runtime_name(name: str, prefixes: list[str] | tuple[str, ...]) -> str:
+    """The runtime's `server_tool` → ClearGate `server.tool`; longest matching prefix wins."""
+    for prefix in sorted(prefixes, key=len, reverse=True):
+        if name.startswith(f"{prefix}_"):
+            return f"{prefix}.{name[len(prefix) + 1:]}"
+    return name
+
+
+def spec_from_mcp(name: str, tool: Any) -> ToolSpec:
+    """A ToolSpec named `name` from an MCP tool object or dict (name, description, inputSchema)."""
+    get = (lambda k: tool.get(k)) if isinstance(tool, dict) else (lambda k: getattr(tool, k, None))
+    schema = get("inputSchema") or get("input_schema") or {"type": "object", "properties": {}}
+    schema = {k: v for k, v in dict(schema).items() if k not in ("$schema",)}
+    return ToolSpec(name, get("description") or "", schema)

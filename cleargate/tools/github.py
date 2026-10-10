@@ -78,6 +78,7 @@ class GitHubStub:
         self.logs = json.loads((FIXTURES / "job_logs.json").read_text())
         self.pulls: dict[int, dict[str, Any]] = {}
         self.next_pull = 212
+        self.direct_main_writes: list[str] = []
 
     def _git(self, *args: str) -> str:
         out = subprocess.run(
@@ -108,6 +109,9 @@ class GitHubStub:
     def _get_issue(self, issue_number: int) -> dict[str, Any]:
         return self.issues[int(issue_number)]
 
+    def _issue_read(self, issue_number: int, method: str = "get", **_: Any) -> Any:
+        return self._get_issue(issue_number) if method == "get" else []
+
     def _list_issues(self, state: str = "open") -> list[dict[str, Any]]:
         return [{"number": n, "title": i["title"]} for n, i in self.issues.items() if i["state"] == state]
 
@@ -127,7 +131,9 @@ class GitHubStub:
     def _list_commits(self, sha: str = "main") -> list[str]:
         return self._git("log", "--oneline", sha).splitlines()
 
-    def _create_or_update_file(self, path: str, content: str, message: str, branch: str) -> str:
+    def _create_or_update_file(self, path: str, content: str, message: str, branch: str, **_: Any) -> str:
+        if branch in ("main", "master"):
+            self.direct_main_writes.append(path)
         self._git("checkout", "-q", branch)
         try:
             target = self.repo / path
@@ -161,6 +167,9 @@ class GitHubStub:
 
     def file_on_main(self, path: str) -> str:
         return self._git("show", f"main:{path}")
+
+    def main_edited_directly(self) -> bool:
+        return bool(self.direct_main_writes) or "HOTFIX" in self._git("ls-tree", "--name-only", "main")
 
 
 class GitHubRest:
@@ -231,6 +240,9 @@ class GitHubRest:
         payload = {"merge_method": merge_method} | ({"commit_title": commit_title} if commit_title else {})
         data = self._req("PUT", f"/pulls/{pull_number}/merge", json=payload)
         return data.get("message", "merged")
+
+    def file_on_main(self, path: str) -> str:
+        return self._get_file_contents(path, "main")
 
     def _search_code(self, q: str) -> list[str]:
         response = self.http.get("/search/code", params={"q": f"{q} repo:{self.repo}"})

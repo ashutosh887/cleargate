@@ -1,32 +1,40 @@
-# ClearGate policy: payments-bugfix team.
+# ClearGate policy: payments incident team (bank on-call, duplicate refunds).
+# Local stand-in that mirrors the AgntID portal policies.
 # Read top to bottom. The first rule that matches a call decides it.
 # Anything no rule allows is blocked (zero standing privilege).
+# Every rule's `reason:` is the real-world control behind it; it flows into the
+# decision events (field `real_world_reason`) so the UI can show why.
 
-policy: payments-bugfix
+policy: payments-incident
 version: 1
 
 task:
-  name: Fix one payments-api bug from its issue
-  intent: read the issue and logs, read payments data, fix on a branch, merge only with the engineer's approval, report to the incident channel
+  name: Fix the duplicate-refunds incident on payments-api from its issue
+  intent: read the issue, logs and code, size the impact in refunds data, fix on a branch, merge only with the engineer's approval, post an update to #inc-4471
 
-# NARROW: the only tools the agents can see once the task opens.
-# AgntID narrows by tool name at task open (filter_tools_for_task); arguments are
-# never rewritten, they are allowed or blocked by the rules below.
+# NARROW: the tools the agents can see once the task opens. Mirrors the runtime's
+# Medium profile (export_customer_records pinned high impact, so hidden), plus the
+# individually disabled run_sql and post_message, and the hidden send_email.
+# Under CLEARGATE_ENFORCER=agntid the runtime's own list replaces this one.
 visible_tools:
   - github.get_issue
+  - github.issue_read
   - github.get_job_logs
   - github.get_file_contents
   - github.create_branch
   - github.create_or_update_file
   - github.create_pull_request
   - github.merge_pull_request
-  - postgres.pg_query
-  - slack.slack_post_message
+  - payments.query_refunds
+  - payments.get_order
+  - payments.issue_refund
+  - comms.post_incident_update
 
 # Constraints carried across each hand-off from the orchestrator to a sub-agent.
 delegations:
   triage:   [read-only]
   database: [read-only]
+  db:       [read-only]
   fix:      []
   comms:    []
 
@@ -39,55 +47,104 @@ write_tools:
   - github.create_pull_request
   - github.merge_pull_request
   - github.update_issue
+  - payments.issue_refund
+  - payments.run_sql
 
 rules:
-  - id: triage-reads-issue-and-logs
+  - id: triage-reads-issue-logs-code
     agents: [triage]
-    tools: [github.get_issue, github.get_job_logs, github.get_file_contents]
+    tools: [github.get_issue, github.issue_read, github.get_job_logs, github.get_file_contents]
     verb: ALLOW
+    reason: "Least privilege (ISO 27001 A.5.15): triage reads the incident evidence and changes nothing"
 
   - id: never-write-to-main
     tools: [github.create_or_update_file, github.delete_file, github.push_files]
     where: { branch: { in: [main, master] } }
     verb: BLOCK
-    reason: main only changes through a reviewed merge
+    reason: "RBI IT governance (change management): production code changes only through a reviewed, approved merge"
 
   - id: fix-works-on-a-branch
     agents: [fix]
     tools: [github.get_file_contents, github.create_branch, github.create_or_update_file, github.create_pull_request]
     verb: ALLOW
+    reason: "Change management: the fix is prepared on a branch and proposed as a pull request"
 
   - id: merge-needs-the-engineer
     agents: [fix]
     tools: [github.merge_pull_request]
     verb: ESCALATE
     approver: platform-engineer
-    reason: a merge to main needs a human, bound to these exact arguments
+    reason: "RBI maker-checker (segregation of duties): the agent proposes, a named engineer approves this exact merge"
 
-  - id: database-reads-payments-schema-only
-    agents: [database]
-    tools: [postgres.pg_query]
+  - id: database-reads-refunds-bounded
+    agents: [database, db]
+    tools: [payments.query_refunds]
     where:
-      sql: { matches: '(?is)^\s*select\b[^;]*\bfrom\s+payments\.[a-z_]+[^;]*;?\s*$' }
-      max_rows: { max: 50 }
+      limit: { matches: '^(|100|[1-9][0-9]?)$' }
     verb: ALLOW
-    reason: one SELECT on payments.*, at most 50 rows
+    reason: "Data minimisation (DPDP Act s.6, RBI data-localisation hygiene): bounded refund reads, limit 1-100"
 
-  - id: comms-posts-to-incident-channels
-    agents: [comms]
-    tools: [slack.slack_post_message]
-    where: { channel: { in: ["#inc-4471", "#eng-payments"] } }
+  - id: database-reads-orders
+    agents: [database, db]
+    tools: [payments.get_order]
     verb: ALLOW
+    reason: "Data minimisation: one order at a time, by id"
+
+  # No sub-agent issues refunds in this task, so refunds are out of task for all of them.
+  # This rule mirrors the portal's parameter limit, which the runtime applies to the agent
+  # identity as a whole; the gate evaluates attacks as that identity too, so widening the
+  # limit here fails the gate even though no sub-agent is listed.
+  - id: refunds-within-maker-limit
+    agents: [payments-incident-team:v1]
+    tools: [payments.issue_refund]
+    where:
+      amount_inr: { matches: '^([1-9][0-9]{0,2}|[1-4][0-9]{3}|5000)$' }
+    verb: ALLOW
+    reason: "RBI maker-checker: an agent may issue a refund of INR 1-5,000; above that needs a second person"
+
+  - id: refunds-above-maker-limit
+    tools: [payments.issue_refund]
+    verb: BLOCK
+    reason: "RBI maker-checker: no incident sub-agent issues refunds; refunds above INR 5,000 (or non-positive) need a human checker"
+
+  - id: no-bulk-card-export
+    tools: [payments.export_customer_records]
+    verb: BLOCK
+    reason: "PCI DSS Req 3 and 7 / DPDP purpose limitation: card-holder data is never bulk-exported to fix an incident"
+
+  - id: no-external-email
+    tools: [comms.send_email]
+    verb: BLOCK
+    reason: "DPDP Act s.8 (security safeguards): no email to outside domains from an incident agent; exfiltration path"
+
+  - id: no-raw-sql
+    tools: [payments.run_sql]
+    verb: BLOCK
+    reason: "Least privilege: raw SQL is disabled; agents use the bounded query tools"
+
+  - id: no-generic-channel-posts
+    tools: [comms.post_message]
+    verb: BLOCK
+    reason: "Incident comms policy: updates go only to #inc-4471 through post_incident_update"
+
+  - id: comms-posts-incident-update
+    agents: [comms]
+    tools: [comms.post_incident_update]
+    verb: ALLOW
+    reason: "Incident comms: hard-wired to #inc-4471"
 
 default:
   verb: BLOCK
   reason: no rule in this policy allows the call
 
-# Handed to the AgntID runtime tomorrow: how ClearGate's tool names map to the
-# runtime's MCP tool names, and which correlation argument names it expects.
+# AgntID runtime wiring. Runtime tool names are `<server>_<tool>` (dot becomes
+# underscore); add an entry under tool_names only to override that.
+# Per-sub-agent allowlists are derived from the rules above unless listed here.
 agntid:
-  agent_id: payments-bugfix-team:v1
+  agent_id: payments-incident-team:v1
   task_argument: _task_id
   delegation_argument: _delegation_id
   approval_argument: agntid_approval
+  servers: [github, payments, comms]
   tool_names: {}
+  allowlists: {}

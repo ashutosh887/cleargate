@@ -34,6 +34,35 @@ class Rule:
         return all(_check(args.get(key), tests) for key, tests in self.where.items())
 
 
+OPERATORS = frozenset({"equals", "not_equals", "in", "not_in", "matches", "not_matches", "max"})
+
+
+def _validate_where(rule_id: str, where: Any) -> dict[str, dict[str, Any]]:
+    """Fail at load, not at the first matching call: a typo'd operator would otherwise raise
+    KeyError mid-run or, worse, a rule that never matches would silently fall through."""
+    if where is None:
+        return {}
+    if not isinstance(where, dict):
+        raise ValueError(f"rule {rule_id}: `where` must map argument names to tests")
+    for arg, tests in where.items():
+        if not isinstance(tests, dict) or not tests:
+            raise ValueError(f"rule {rule_id}: where.{arg} must be a mapping of operator: value")
+        for op, expected in tests.items():
+            if op not in OPERATORS:
+                raise ValueError(f"rule {rule_id}: where.{arg} uses unknown operator {op!r}; "
+                                 f"allowed: {', '.join(sorted(OPERATORS))}")
+            if op in ("in", "not_in") and not isinstance(expected, list):
+                raise ValueError(f"rule {rule_id}: where.{arg}.{op} needs a list")
+            if op in ("matches", "not_matches"):
+                try:
+                    re.compile(str(expected))
+                except re.error as exc:
+                    raise ValueError(f"rule {rule_id}: where.{arg}.{op} is not a valid regex: {exc}") from exc
+            if op == "max" and _number(expected) is None:
+                raise ValueError(f"rule {rule_id}: where.{arg}.max needs a number, got {expected!r}")
+    return where
+
+
 def _check(value: Any, tests: dict[str, Any]) -> bool:
     text = "" if value is None else str(value)
     for op, expected in tests.items():
@@ -84,7 +113,7 @@ class Policy:
                 verb=Verb(r["verb"]),
                 tools=frozenset(r["tools"]),
                 agents=frozenset(r["agents"]) if "agents" in r else None,
-                where=r.get("where", {}),
+                where=_validate_where(r["id"], r.get("where")),
                 approver=r.get("approver"),
                 reason=r.get("reason", ""),
             )
