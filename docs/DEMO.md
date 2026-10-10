@@ -104,5 +104,5 @@ Say on stage: "This is the offline stand-in, labelled 'not AgntID'. It mirrors t
 | GitHub server fails in the runtime | The runtime needs `GITHUB_TOKEN` in its environment; restart compose with it set |
 | Payments calls fail after Postgres restart | Restart `cleargate mcp-serve` (it holds one connection) |
 | Refund ledger already "fixed" from an earlier run | `cleargate seed` |
-| LLM intent not catching the export | Check the runtime has an OpenAI credential and intent mode is LLM-based |
+| Intent not catching the export | Standard intent (the default) is less accurate; LLM-based intent needs an OpenAI credential on the runtime. Fall back to the stand-in run and say so |
 | Voice not recognised | Use the click approval or type the code |

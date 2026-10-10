@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ClearGate: a go-live gate for AI agents</title>
-<meta name="description" content="A go-live gate for AI agents that move money, change code or touch customer data. Runs the agent with and without AgntID, evolves attacks, proposes policy, gates CI and signs a verifiable record.">
-<meta property="og:title" content="ClearGate: a go-live gate for AI agents">
+<title>ClearGate: AI agents you'd actually trust</title>
+<meta name="description" content="A bank voice agent and a coding agent team that act only through AgntID, plus the go-live gate that attacks them, evolves the attacks, proposes policy, gates CI and signs a verifiable record.">
+<meta property="og:title" content="ClearGate: AI agents you'd actually trust">
 <meta property="og:description" content="The agent acts. AgntID decides. The engineer signs.">
 <meta property="og:image" content="/assets/img/03-block-injection.jpg">
 <meta name="theme-color" content="#0f1522">
@@ -40,8 +40,8 @@
 <div class="wrap">
 
 <section class="intro">
-  <h1>A go-live gate for AI agents.</h1>
-  <p class="lede">Run your agent with and without AgntID, turn the attacks that get through into policy, and ship only with a signed record.</p>
+  <h1>AI agents you'd actually trust.</h1>
+  <p class="lede">A bank voice agent and a coding agent team that act only through AgntID, plus the go-live gate that attacks them and signs the proof.</p>
   <div class="ctas">
     <a class="btn primary" href="/try.html">Try a call</a>
     <a class="btn" href="/how-it-works.html">How it works</a>
@@ -49,18 +49,18 @@
 </section>
 
 <ul class="tiles" aria-label="Measured on the two examples">
-  <li><span class="tile-fig"><span class="bad">8/8</span> <span class="to">→</span> <span class="good">0/7</span></span><span class="tile-label">out-of-task calls that reached a tool, stock vs gated</span></li>
+  <li><span class="tile-fig"><span class="bad">8/8</span> <span class="to">→</span> <span class="good">0/7</span></span><span class="tile-label">out-of-task calls that reached a tool: no guardrails vs AgntID-gated</span></li>
   <li><span class="tile-fig">49 <span class="to">→</span> 11</span><span class="tile-label">tools visible to the agent at task start</span></li>
   <li><span class="tile-fig">19 of 20</span><span class="tile-label">attacks blocked by the proposed policy, 0 of 13 needed calls broken</span></li>
   <li><span class="tile-fig">0 gaps</span><span class="tile-label">in 118,000+ evolved attack cases after the fix</span></li>
 </ul>
 
 <section class="band" aria-labelledby="loop">
-  <h2 id="loop">What the gate does</h2>
+  <h2 id="loop">How it works</h2>
   <ol class="flow">
-    <li><b>Run it twice.</b> Your agent keeps its model, prompts and tools. ClearGate runs it stock and behind AgntID on the same input.</li>
-    <li><b>Attack and evolve.</b> Known attacks go in. Every blocked attack is mutated until something gets through or nothing does.</li>
-    <li><b>Gate and sign.</b> A proposed policy, a CI check on every pull request, and a signed record anyone can verify offline.</li>
+    <li><b>Gate every call.</b> Each agent acts only through AgntID: tool visibility, parameter limits, intent, scoped credentials, per-agent authority.</li>
+    <li><b>Attack and evolve.</b> Known attacks go in, beside the same agent with no guardrails. Every blocked attack is mutated until something gets through or nothing does.</li>
+    <li><b>Prove and sign.</b> A proposed policy, a CI check on every pull request, and a signed record anyone can verify offline.</li>
   </ol>
 </section>
 
@@ -77,7 +77,7 @@
 </section>
 
 <section class="band" aria-labelledby="uses">
-  <h2 id="uses">Use it for</h2>
+  <h2 id="uses">The same pattern fits</h2>
   <ul class="uses">
     <li>Banking and payments voice agents</li>
     <li>Customer-support refunds and credits</li>

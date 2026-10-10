@@ -25,18 +25,18 @@ Every AgntID feature ClearGate uses, where it is configured, and why, shown on t
 
 ## Policies (portal)
 
-Eight AgntID controls and one ClearGate layer. The rows that change the incident run's outcome are 1, 4, 6 and A; row 8 is the bank voice agent's destination rule.
+Seven AgntID controls and one ClearGate layer (A). AgntID is the only enforcer; ClearGate configures it, drives it through the SDK and records what it decides. The rows that change the incident run's outcome are 1, 4, 6 and A; row 3b is the bank voice agent's destination rule, a second Parameter-Level Policy under control 3.
 
 | # | Control | Portal location | Setting | Effect in the demo | Real-world reason |
 |---|---|---|---|---|---|
 | 1 | Protection profile and high-impact label (visibility at `list_tools`) | Runtime Setup, Protection Profile; Access Control, Advanced, Correct Label | **Medium** (READ_WRITE): delete and execute tools hidden; `export_customer_records` labelled high impact On the stand-in the incident team sees 11 of 49 tools at task open (GitHub 41 to 7); export not visible to the task. The runtime's own counts come from `scripts/runtime_proof.py` check 1 | PCI DSS Req 7, need-to-know |
-| 2 | Per-tool disable | Access Control, Tools | `payments_run_sql` and `comms_post_message` disabled; `post_incident_update` (hard-wired to `#inc-4471`) stays | Raw SQL never available; no posts outside the incident room | PCI DSS Req 3: raw SQL bypasses every control on `customers.cards` |
+| 2 | Per-tool override on the profile (disable) | Access Control, Tools | `payments_run_sql` and `comms_post_message` disabled; `post_incident_update` (hard-wired to `#inc-4471`) stays | Raw SQL never available; no posts outside the incident room | PCI DSS Req 3: raw SQL bypasses every control on `customers.cards` |
 | 3 | Parameter limits | Access Policies, MCP policy | `payments.query_refunds.limit` 1 to 100; `payments.issue_refund.amount_inr` 1 to 5000 | The agent's `limit=5000` and `amount_inr=9998` are outside the bounds; Inspector `amount_inr=6000` denied; `limit=20` allowed | DPDP purpose limitation; RBI maker-checker on money movement |
-| 4 | Intent check | Operations, Configuration, Intent engine | LLM-based if the runtime has an OpenAI credential, otherwise Standard (the portal label; the deck's ML-based, semantic evaluation). `scripts/runtime_proof.py` check 2 reports which engine the runtime used | Injected export and email denied as off-intent | Intent is checked on the call, not on the text the agent read |
+| 4 | Intent check | Operations, Configuration, Intent engine | Standard (the portal label; the deck's ML-based, semantic evaluation). LLM-based intent needs an OpenAI credential on the runtime, which this setup does not have. `scripts/runtime_proof.py` check 2 reports which engine the runtime used | Injected export and email denied as off-intent | Intent is checked on the call, not on the text the agent read |
 | 5 | Runtime-held credential | MCP server entry, auth `bearer_token` | GitHub token held by the runtime only | The gated agents never hold it; the stock agent holds the PAT | No standing PAT on the gated path |
 | 6 | Per-agent authority via delegations | SDK: `send_delegation_open` per hand-off | Each sub-agent has its own tool allowlist; triage and db are read-only | DELEGATION lines with `constraints`. Whether the runtime denies a read-only agent's write on its own is checked by `scripts/live_all.sh` | 7 of 12 sub-agents lost "do not modify" in AgntID's experiment |
 | 7 | Task close ends authority | SDK: `send_task_open_details`, `send_task_close` | Access exists only while the task is open | A call after close is denied | Just-for-task access |
-| 8 | Parameter-Level Policy `bank-destination-allowlist` (bank voice agent) | Access Policies, MCP policy | `payments_refund_to_account.destination_account`, string allow-list of the registered accounts on file (`50100234567812`, `50100876543219` in the sandbox) | A refund to any other account is denied before the tool runs. Forced by the bargaining caller campaign: gated ₹15,580 → ₹0 (local stand-in, seed 7) | Refunds credit only a registered account; the caller is the policy variable |
+| 3b | Parameter-Level Policy `bank-destination-allowlist` (bank voice agent; part of control 3) | Access Policies, MCP policy | `payments_refund_to_account.destination_account`, string allow-list of the registered accounts on file (`50100234567812`, `50100876543219` in the sandbox) | A refund to any other account is denied before the tool runs. Forced by the bargaining caller campaign: gated ₹15,580 → ₹0 (local stand-in, seed 7) | Refunds credit only a registered account; the caller is the policy variable |
 | A | **ClearGate layer (app layer, not AgntID-native):** approval bound to the args digest | Access Control, Tools / policy for the runtime side | `policy.yaml` marks the merge ESCALATE; ClearGate binds the engineer's approval to the SHA-256 digest of the exact arguments and re-sends the call through the runtime, which makes the final decision | Merge waits for the engineer; a merge retried with different arguments is blocked by ClearGate because the approval digest no longer matches | RBI IT governance: change management, maker-checker |
 
 Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator) can check policies before the live run, and **Reporting** shows the runtime's ALLOW and BLOCK decisions. Neither is part of the measured runs in this repo. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
@@ -45,10 +45,10 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 
 ### Portal click-path
 
-1. Access Control, Credentials: add an Anthropic credential (Simulator) and an OpenAI credential (LLM intent), if available.
+1. Access Control, Credentials: optional. The Simulator needs an LLM credential and LLM-based intent needs an OpenAI credential; this setup has neither, so intent runs in Standard mode.
 2. Runtimes, Add Runtime, copy the bootstrap token, paste it at `http://localhost:8080`, Connect to Control Plane.
 3. Runtime Setup: MCP support on, CLI off, Protection Profile Medium.
-4. Operations, Configuration: intent engine LLM-based, tool intelligence LLM-based, Simulation System on.
+4. Operations, Configuration: intent engine Standard (LLM-based only if an OpenAI credential was added in step 1).
 5. Operations, MCP, Servers, Add MCP: `payments`, `comms`, `github` as in the table above. Wait for "Applied".
 6. Access Control, Tools: approve tools that need review; disable `run_sql` and `post_message`.
 7. Access Control, Advanced: check labels on `export_customer_records`, `run_sql`, `issue_refund`, merge.
@@ -57,6 +57,17 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 10. Inspector: call `payments_refund_to_account` with an unregistered `destination_account`; expect a denial. Then run `PAYEE_CHECK=off cleargate bank --campaign --seed 7` with `CLEARGATE_ENFORCER=agntid`.
 11. Inspector, List Tools; call `payments_issue_refund` with `amount_inr=6000`; expect a denial.
 12. Simulator run, then Reporting.
+
+## Bonus items, where each one is shown
+
+| Bonus item | Control | Where to see it |
+|---|---|---|
+| Different authority per agent | 6, delegations | One `send_delegation_open` per hand-off (`cleargate/agents/team.py`, `cleargate/bank/team.py`); DELEGATION record lines with each sub-agent's allowlist; `docs/screenshots/11-delegation-tree.png`. Triage, db and the bank's accounts agent are read-only |
+| Human approval | A (ClearGate layer) | Merge ESCALATE, voice approval on `/oncall`, digest-bound re-send; `docs/screenshots/04-escalate-card.png`, `05-not-a-bypass.png`, `07-oncall-phone.png` |
+| Parameter policies | 3 and 3b | `limit` 1 to 100, `amount_inr` 1 to 5000, `destination_account` allow-list; `PAYEE_CHECK=off cleargate bank --campaign --stub --seed 7` (gated ₹15,580 before 3b, ₹0 after, local stand-in) |
+| Profiles and overrides | 1 and 2 | Protection Profile Medium, then per-tool overrides on top of it: `run_sql` and `post_message` disabled, `export_customer_records` labelled high impact |
+| Intent | 4 | Standard intent on the task prompt or the classified call; 11 of 86 coverage cases can only be stopped by intent (`docs/coverage.html`); `scripts/runtime_proof.py` check 4 on the runtime |
+| Multiple controls together | 1 to 7 and A in one run | One incident run uses visibility, parameter limits, intent, the held credential, delegations, task close and approval together (`cleargate check --stub`); the coverage matrix shows which control stopped each of 86 cases |
 
 ## SDK calls, in order
 

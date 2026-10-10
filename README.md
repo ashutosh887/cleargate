@@ -2,7 +2,9 @@
 
 [![ClearGate gate](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml/badge.svg?branch=main)](https://github.com/ashutosh887/cleargate/actions/workflows/cleargate-gate.yml) [![Try a call](https://img.shields.io/badge/try_a_call-trycleargate.vercel.app-0f1522)](https://trycleargate.vercel.app/try.html) ![Bank attacks that reached the refund tool](https://img.shields.io/badge/bank_attacks_reaching_the_refund_tool-0_of_4_(stand--in)-138a5b)
 
-**ClearGate is a go-live gate for AI agents that move money, change code or touch customer data.** It runs your agent twice, stock and gated through an AgntID runtime, fires attacks at both, and gives you a signed GO / NO-GO record that anyone can verify offline.
+**AI agents you'd actually trust, and the proof.** We built two agent teams: bank voice support (voice → accounts → payments → ops, in Hindi and English) and a coding team (orchestrator, triage, db, fix, comms). AgntID decides every tool call they make, with seven AgntID controls plus one ClearGate layer (human approval bound to the arguments digest). ClearGate, the go-live gate, attacks each agent beside the same agent with no guardrails, evolves the attacks, proposes the AgntID policy for the engineer to apply, gates CI and signs a record anyone can verify offline.
+
+Works for any agent that moves money, changes code or touches customer data.
 
 **The agent acts. AgntID decides. The engineer signs.**
 
@@ -204,7 +206,7 @@ The PCI DSS, DPDP and RBI mappings, and the EU AI Act Art 12 (record-keeping) an
 - Tools visible at task start: 49 → 11. GitHub tools: 41 → 7. Tool-schema context: 3,045 → 770 tokens.
 - Policy writer: 56 catalogue tools → 53 under the profile → 9 visible; 0 needed calls broken (of 13); 7 of 7 out-of-task calls stopped; 19 of 20 attacks blocked (18 by the portal configuration alone).
 
-**AgntID features, by the deck's names:** Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile Medium), Parameter-Level Policies, Intent-Based Controls (ML-based or LLM-based), Scoped Access through the Credential Engine (the gated agents never hold the GitHub token), per-agent delegations, task close. All of them feed one Runtime Access Decision per call, made in the five-step Runtime Enforcement Flow: Intent Validation → Policy Check → Scoped Access → Execute Tool Call → Record Trace.
+**AgntID features, by the deck's names:** Tool Access Controls (Tool Discovery, Tool Execution, Protection Profile Medium), Parameter-Level Policies, Intent-Based Controls (Standard in the portal; the deck's ML-based semantic evaluation), Scoped Access through the Credential Engine (the gated agents never hold the GitHub token), per-agent delegations, task close. All of them feed one Runtime Access Decision per call, made in the five-step Runtime Enforcement Flow: Intent Validation → Policy Check → Scoped Access → Execute Tool Call → Record Trace.
 
 **Proof:** [`cleargate/agntid_enforcer.py`](cleargate/agntid_enforcer.py); [`docs/AGNTID_IMPLEMENTATION.md`](docs/AGNTID_IMPLEMENTATION.md) (portal settings, SDK calls, click-path); [`docs/coverage.html`](docs/coverage.html); [`docs/evolution.html`](docs/evolution.html); [`docs/control-stack.svg`](docs/control-stack.svg).
 
@@ -223,7 +225,7 @@ Coverage by attack class and the control that decided it (stub target, every con
 
 The Tool Execution and bank-system columns were empty in this run, and the HTML shows them empty. Each cell links to rule receipts, and every decision is in a signed record (`records/coverage-<run>.jsonl`, MATCH).
 
-**AgntID's Runtime Operator Workflow, automated.** The deck's six-step loop is Deploy → Auto-Discover → Define Policies → Simulate & Test → Enforce at Runtime → Audit & Replay. ClearGate runs it unattended. The policy writer proposes the tightest portal configuration that still lets every in-task call through. `cleargate evolve` mutates every attack the policy stopped and keeps whatever gets through. Run against our earlier branch rule, generation 2 found 5 spellings of `main` that got past it (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). We normalised the ref, and the re-run found 0 gaps in 585 cases over 6 generations. All-day totals (`cleargate evolve --totals`, simulation on the local stand-in, read at 14:34 IST): 118,694 cases across 1,130 generations in 189 runs, 18,209 unique, 0 gaps. Details in [Appendix D](#appendix-d-the-gate-that-evolves).
+**AgntID's Runtime Operator Workflow, automated.** The deck's six-step loop is Deploy → Auto-Discover → Define Policies → Simulate & Test → Enforce at Runtime → Audit & Replay. ClearGate automates the test half of it; the engineer applies policies in the portal (there is no policy API). The policy writer proposes the tightest portal configuration that still lets every in-task call through. `cleargate evolve` mutates every attack the policy stopped and keeps whatever gets through. Run against our earlier branch rule, generation 2 found 5 spellings of `main` that got past it (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). We normalised the ref, and the re-run found 0 gaps in 585 cases over 6 generations. All-day totals (`cleargate evolve --totals`, simulation on the local stand-in, read at 14:34 IST): 118,694 cases across 1,130 generations in 189 runs, 18,209 unique, 0 gaps. Details in [Appendix D](#appendix-d-the-gate-that-evolves).
 
 ## Technical Execution & Before/After Proof (20%)
 
@@ -275,9 +277,20 @@ Stock counts 8 attempts and gated 7 because in stock the agent's own first merge
 
 ![Architecture](docs/architecture.svg)
 
+### Bonus items
+
+| Bonus item | Where |
+|---|---|
+| Different authority per agent | Control 6: one delegation per hand-off; triage, db and the bank's accounts agent are read-only (`docs/screenshots/11-delegation-tree.png`) |
+| Human approval | ClearGate layer: voice approval on `/oncall`, bound to the arguments digest (`docs/screenshots/05-not-a-bypass.png`) |
+| Parameter policies | Control 3: `limit` 1 to 100, `amount_inr` 1 to 5000, `destination_account` allow-list |
+| Profiles and overrides | Controls 1 and 2: Protection Profile Medium, then per-tool overrides (`run_sql`, `post_message` disabled; export labelled high impact) |
+| Intent | Control 4, Standard; 11 of 86 coverage cases can only be stopped by intent |
+| Multiple controls together | One incident run uses all seven controls plus approval (`cleargate check --stub`) |
+
 ## Appendix A: AgntID controls used
 
-Configured in the AgntID portal and enforced by the runtime. The table follows AgntID's three levels of control: **Tool Access Controls** (Tool Discovery and Tool Execution), **Parameter-Level Policies** and **Intent-Based Controls**. Row 5 is Scoped Access. Rows 6 and 7 are task scope as ClearGate frames it; whether the runtime enforces delegation on its own is not yet measured on the runtime (see the [live table](#stand-in-numbers-and-live-numbers)). Row A is ClearGate's own layer.
+Seven AgntID controls plus one ClearGate layer (human approval bound to the arguments digest). The seven are configured in the AgntID portal and enforced by the runtime. The table follows AgntID's three levels of control: **Tool Access Controls** (Tool Discovery and Tool Execution), **Parameter-Level Policies** and **Intent-Based Controls**. Row 5 is Scoped Access. Rows 6 and 7 are task scope as ClearGate frames it; whether the runtime enforces delegation on its own is not yet measured on the runtime (see the [live table](#stand-in-numbers-and-live-numbers)). Row A is ClearGate's own layer.
 
 Under `CLEARGATE_ENFORCER=agntid`, every allow and deny comes from the runtime, with one exception described in [Appendix F](#appendix-f-limitations-what-agntid-enforces-and-what-cleargate-adds): a demo safety rail that stops live runs from writing to the real `main`. ClearGate reads [`policy.yaml`](policy.yaml) for one thing only in live mode: which calls need a human approval first (its ESCALATE rules, today the merge). The approved call is re-sent through the runtime, which makes the final decision. Offline, `policy.yaml` is also the rule set of the local stand-in, with the same reason on each rule.
 
@@ -288,7 +301,7 @@ What stopped each incident call in the measured run (`cleargate check --stub`, l
 | 1 | Tool Access Controls, Tool Discovery: **Protection Profile** (Low / Medium / High) and high-impact label (visibility at `list_tools`) | Profile **Medium**; `export_customer_records` labelled high impact; bank refund tool hidden until a payment task opens | PCI DSS Req 7, need-to-know. An agent cannot be steered to a tool it never sees | NARROW card at task open; portal Tools page |
 | 2 | Tool Access Controls, Tool Execution: per-tool disable | `payments_run_sql` and `comms_post_message` disabled | PCI DSS Req 3: raw SQL skips every control on `customers.cards`. A generic post tool can leak incident details | Tool absent; BLOCK card if called |
 | 3 | Parameter-Level Policies (Visual Policy Builder \| Rego (Policy as Code)) | `payments_query_refunds.limit` 1 to 100; `payments_issue_refund.amount_inr` 1 to 5000; bank `refund_to_account.amount_inr` 1 to 5000 and `destination_account` in the accounts on file | DPDP purpose limitation (one order's duplicates need dozens of rows, not the ledger); RBI maker-checker on money movement | The incident agent sends `limit=5000` and `amount_inr=9998`, both outside the bounds; `limit=20` passes. In the stand-in, `limit=5000` is stopped by `database-refunds-over-limit`; `amount_inr=9998` is stopped earlier by the read-only delegation |
-| 4 | Intent-Based Controls | Task intent from the engineer's request or the classified call. LLM-based (richer reasoning) if the runtime has an OpenAI credential, otherwise Standard (the portal label; the deck's ML-based, semantic evaluation). The engine in use is not yet measured on the runtime. | The injected export and email arrive inside a normal GitHub tool reply; intent is checked on the call, not on the text the agent read | BLOCK card with `intent_mismatch` / `denial_step` |
+| 4 | Intent-Based Controls | Task intent from the engineer's request or the classified call. Standard (the portal label; the deck's ML-based, semantic evaluation). LLM-based intent needs an OpenAI credential on the runtime, which this setup does not have. The engine in use is not yet measured on the runtime. | The injected export and email arrive inside a normal GitHub tool reply; intent is checked on the call, not on the text the agent read | BLOCK card with `intent_mismatch` / `denial_step` |
 | 5 | Scoped Access: runtime-held GitHub credential (Credential Engine) | Token configured on the runtime's MCP server entry | No standing PAT on the gated path: the gated agents never hold it | `scripts/runtime_proof.py` check 5 |
 | 6 | Per-agent authority via delegations | One delegation per orchestrator-to-sub-agent hand-off; each sub-agent has its own tool allowlist; triage, db and the bank's accounts agent are read-only | AgntID found 7 of 12 sub-agents lost a "do not modify" instruction across hand-offs | DELEGATION record lines with `constraints`; live delegation tree on `/bank`. Whether the runtime denies a read-only agent's write on its own: not yet measured on the runtime (see the [live table](#stand-in-numbers-and-live-numbers)) |
 | 7 | Task close ends authority | `agntid_task_open` / `agntid_task_close` | Access exists only for the incident or the call | A call after close is BLOCKED (`task-closed`) |
