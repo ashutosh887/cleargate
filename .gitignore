@@ -42,3 +42,4 @@ NEXT_SESSION.md
 
 # vendored copy for the site function (scripts/build_site_api.sh)
 site/api/_lib/
+docs/audio/
