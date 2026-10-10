@@ -8,7 +8,7 @@ from cleargate.tools.base import ToolClient, to_wire_name
 
 
 class Agent:
-    def __init__(self, name: str, system: str, brain: Brain, tools: ToolClient, max_steps: int = 10):
+    def __init__(self, name: str, system: str, brain: Brain, tools: ToolClient, max_steps: int = 12):
         self.name = name
         self.system = system
         self.brain = brain
