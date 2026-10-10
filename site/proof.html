@@ -35,7 +35,6 @@
 <main>
 <div class="wrap">
 
-<div class="col">
 <h1>Proof</h1>
 <p class="lede">What the gate stopped, what the stock agents did, and where each number comes from.</p>
 
@@ -54,14 +53,12 @@
   </tbody>
 </table></div>
 <p class="fine note">Measured on the local AgntID stand-in; live runtime figures in progress.</p>
-</div>
 
 <figure class="shot">
   <img src="/assets/img/06-go-live-screen.jpg" alt="Go-live screen: GO stamp, tools narrowed 49 to 11, 7 out-of-task attempts blocked, merge approved, retried merge blocked, signed record MATCH." loading="lazy">
   <figcaption>The go-live screen after a gated run. </figcaption>
 </figure>
 
-<div class="col">
 <h2>The attack catalogue</h2>
 <ul>
   <li>16 of 20 attacks reached a tool on the stock MCP servers (2 simulated, 2 not run).</li>
@@ -73,16 +70,13 @@
 <h2>The gate that evolves</h2>
 <p><code>cleargate evolve</code> is a policy fuzzer with no LLM in it. It mutates every attack the policy stopped and keeps whatever gets through.</p>
 <p>It found a hole in our own rule. We compared the branch name as a raw string, and generation 2 got five writes to production past it: <code>MAIN</code>, <code>Main</code>, <code>heads/main</code>, <code>refs/heads/main</code>, <code>refs/heads/master</code>. We now compare the normalised ref. The re-run found 0 gaps in 585 cases over 6 generations, and the real task still passed. Seed 7. </p>
-</div>
 <div class="frame"><iframe src="/assets/evolution.html" title="Policy evolution family tree, generation by generation" loading="lazy"></iframe></div>
 <p class="fine"><a href="/assets/evolution.html">Open the family tree on its own page</a></p>
 
-<div class="col">
 <h2>CI: PR #3</h2>
 <p><code>cleargate gate</code> re-runs the attacks and the real task on every pull request that touches the agents or the policy, and exits 1 if any attack reaches a tool. PR #3 applies <code>scripts/demo-loosen-policy.patch</code>, which lets the fix agent merge without approval. The check fails with:</p>
 <pre class="term"><span class="bad">NO-GO: merged by the agent with no human approval</span></pre>
 <p><a href="https://github.com/ashutosh887/cleargate/pull/3">PR #3 on GitHub</a></p>
-</div>
 <figure class="shot">
   <img src="/assets/img/09-gate-summary.jpg" alt="The gate's summary table on a passing run: 0 of 20 attacks reached a tool, 3 need AgntID intent." loading="lazy">
   <figcaption>The gate's summary on a passing run of <code>policy.yaml</code>: 0 of 20 attacks reached a tool, 3 need AgntID's intent check. </figcaption>

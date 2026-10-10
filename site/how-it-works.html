@@ -35,7 +35,6 @@
 <main>
 <div class="wrap">
 
-<div class="col">
 <h1>How it works</h1>
 <p class="lede">Two agent teams at one bank. Every tool call they make goes through the AgntID runtime first.</p>
 
@@ -81,14 +80,12 @@
   <li><b>Execute Tool Call.</b> Only calls that passed steps 1 to 3 reach GitHub, Postgres or Slack.</li>
   <li><b>Record Trace.</b> We also write each decision to a hash-chained record signed with Ed25519.</li>
 </ol>
-</div>
 
 <figure class="shot">
   <img src="/assets/img/01-split-screen-start.jpg" alt="ClearGate console at the start of a run: the stock team on the left, the gated team on the right, with the decision counts above." loading="lazy">
   <figcaption>The console. Stock team on the left, the same team behind the gate on the right, decision counts on top.</figcaption>
 </figure>
 
-<div class="col">
 <h2>The one layer we add</h2>
 <p>AgntID doesn't hold pending approvals, so we do. When the fix agent asks to merge, ClearGate holds the call and phones the on-call engineer. The engineer approves by saying a 4-character code. The approval is bound to the SHA-256 digest of the exact merge arguments, and ClearGate re-sends the approved call through the runtime, which makes the final decision.</p>
 <p>Then the agent retried the merge with a different method and title. This is the record line it produced:</p>
@@ -99,8 +96,7 @@
  "rule": "approval-evidence",
  "reason": "approval is not a bypass: digest mismatch (approved 2f3b…, this call is eb01…)"}</pre>
 <p class="fine">From <code>examples/stub-gated.jsonl</code>, fields trimmed. In this offline run the approver is an auto-approver, labelled "not a human" in the record.</p>
-</div>
-<figure class="shot" style="max-width:300px">
+<figure class="shot phone">
   <img src="/assets/img/07-oncall-phone.jpg" alt="Phone: incoming call, ClearGate escalation, fix sub-agent wants to merge PR #212." loading="lazy">
   <figcaption>The <code>/oncall</code> page on the engineer's phone.</figcaption>
 </figure>
