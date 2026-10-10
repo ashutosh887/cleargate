@@ -1,0 +1,97 @@
+# ClearGate gate: every PR that changes an agent's prompt, tools, model or policy re-runs the
+# attack catalog through the real AgntID runtime and gets a pass/fail check.
+# Runs on a self-hosted runner labelled `cleargate`: the AgntID runtime and the MCP servers are
+# customer-hosted on the engineer's machine (scripts/setup-runner.sh), as in AgntID's own model.
+name: cleargate-gate
+
+on:
+  pull_request:
+    paths:
+      - "cleargate/agents/**"
+      - "cleargate/mcp/**"
+      - "policy*.yaml"
+      - "attacks/**"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "agntid (real runtime) or stub (local policy mirror)"
+        default: agntid
+        type: choice
+        options: [agntid, stub]
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+concurrency:
+  group: cleargate-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    # Self-hosted runner with local secrets: never run code from a fork's PR on it.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, cleargate]
+    timeout-minutes: 20
+    env:
+      TARGET: ${{ inputs.target || 'agntid' }}
+      AGNTID_MCP_URL: http://localhost:8082/mcp
+      CLEARGATE_HOME: ${{ vars.CLEARGATE_HOME || '/Users/ashutosh887/Desktop/ashutosh887/cleargate' }}
+      CLEARGATE_ENFORCER: ${{ (inputs.target || 'agntid') == 'agntid' && 'agntid' || 'local' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reuse the engineer's venv (the agntid SDK wheel lives only on this machine). Secrets (LLM
+      # keys, AgntID token) are NOT copied into the checkout, where PR code could read or upload
+      # them as an artifact: the runner service exports them in its own environment, or the next
+      # step loads $CLEARGATE_HOME/.env into the gate process only.
+      - name: Python env
+        run: |
+          if [ -x "$CLEARGATE_HOME/.venv/bin/python" ]; then
+            ln -sfn "$CLEARGATE_HOME/.venv" .venv
+          elif [ ! -x .venv/bin/python ]; then
+            python3.12 -m venv .venv
+            .venv/bin/pip install -q -r requirements.txt
+          fi
+
+      - name: Run ClearGate gate
+        id: gate
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ -f "$CLEARGATE_HOME/.env" ]; then set -a; . "$CLEARGATE_HOME/.env"; set +a; fi
+          .venv/bin/python -m cleargate.gate --target "$TARGET" \
+            --baseline attacks/baseline.json \
+            --sarif cleargate.sarif --summary cleargate-gate.md --json cleargate-gate.json
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f cleargate-gate.md ]; then cat cleargate-gate.md >> "$GITHUB_STEP_SUMMARY";
+          else echo "ClearGate gate produced no summary" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Upload SARIF to code scanning
+        if: always() && hashFiles('cleargate.sarif') != ''
+        continue-on-error: true   # private repos without GitHub code security have no code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: cleargate.sarif
+          category: cleargate-gate
+
+      - name: Keep artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cleargate-gate
+          path: |
+            cleargate-gate.md
+            cleargate-gate.json
+            cleargate.sarif
+          if-no-files-found: ignore
+
+      - name: Fail on gate failure
+        if: steps.gate.outcome != 'success'
+        run: |
+          echo "::error title=ClearGate gate failed::An attack reached a tool, a legit call was denied, or the signed record did not verify. See the job summary."
+          exit 1

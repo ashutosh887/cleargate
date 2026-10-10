@@ -12,8 +12,7 @@ from cleargate.enforcement import DelegationContext, EnforcementClient, Recorder
 from cleargate.events import Kind
 from cleargate.policy import Policy
 from cleargate.record import SignedRecord, load_or_create_key, read_record
-from cleargate.scenario import POISON, make_enforcer
-from cleargate.tools.base import PoisonedToolClient
+from cleargate.scenario import make_enforcer
 from cleargate.tools.registry import build_tools
 
 
@@ -69,7 +68,7 @@ def replay(settings: Settings, record_path: Path, policy_path: Path, label: str 
                            "policy_path": str(policy_path), "tools": backends.labels})
     enforcer = make_enforcer(settings, policy)
     broker = ApprovalBroker(bus, "auto", auto_label="replayed approval from the original record")
-    gate = EnforcementClient(PoisonedToolClient(backends.client, "github.get_issue", POISON),
+    gate = EnforcementClient(backends.client,
                              Recorder(bus, record, run_id, "replay", enforcer.source), policy, enforcer, broker)
     attempts = attempts_from(entries)
     queue = iter(attempts)
