@@ -38,7 +38,7 @@
   /* header */
   header { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
   header > button { white-space: nowrap; flex: none; }
-  @media (max-width: 1560px) { header > button kbd { display: none; } header { gap: 12px; } }
+  @media (max-width: 1720px) { header > button kbd { display: none; } header { gap: 12px; } header > button { padding: 9px 13px; } }
   header h1 { margin: 0; white-space: nowrap; font: 800 22px/1 var(--sans); letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
   header h1 .mark, .bank-top h2 .mark { display: inline-block; flex: none; font: 800 13px/1 var(--sans); letter-spacing: .04em; color: var(--escalate); border: 2.5px solid currentColor; border-radius: 4px; padding: 4px 5px 3px; transform: rotate(-4deg); }
   header h1 span { color: var(--muted); font-weight: 400; font-size: 15px; letter-spacing: 0; }
@@ -63,7 +63,7 @@
   .strip { display: grid; grid-template-columns: 1fr 1.35fr 1fr; border-bottom: 1px solid var(--rule); }
   .beat { position: relative; padding: 12px 22px 14px 64px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .beat + .beat { border-left: 1px solid var(--rule); }
-  .beat .n { position: absolute; left: 20px; top: 12px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid currentColor;
+  .beat .n { position: absolute; left: 20px; top: 9px; width: 30px; height: 30px; border-radius: 50%; border: 2px solid currentColor;
              display: grid; place-items: center; font: 800 16px/1 var(--sans); }
   .beat h3 { margin: 0; font: 800 20px/1.1 var(--sans); letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .beat.stock { background: linear-gradient(90deg, rgba(255, 107, 107, .10), transparent 85%); }
@@ -94,7 +94,10 @@
   .pane { display: flex; flex-direction: column; min-height: 0; }
   #pane-stock { background: var(--leak-bg); border-right: 1px solid var(--rule); }
   #pane-gated { background: var(--ink); }
-  .pane-head { padding: 10px 20px; border-bottom: 1px solid var(--rule); display: flex; align-items: baseline; gap: 12px; }
+  .pane-head { padding: 10px 20px; border-bottom: 1px solid var(--rule); display: flex; align-items: baseline; gap: 12px; min-height: 48px; }
+  .pane-head .eyebrow { flex: none; font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 4px 7px 3px; align-self: center; }
+  #pane-stock .pane-head .eyebrow, #bank-stock .pane-head .eyebrow { color: #ffb3b3; border-color: rgba(255, 107, 107, .45); }
+  header h1 .ex, .bank-top h2 .ex { font: 600 12px/1 var(--mono); font-style: normal; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); border-left: 1px solid var(--rule); padding-left: 10px; margin-left: 2px; }
   #pane-stock .pane-head { background: rgba(255, 107, 107, .08); }
   #pane-gated .pane-head { background: var(--slate); }
   .pane-head h2 { margin: 0; font: 800 22px/1.1 var(--sans); white-space: nowrap; }
@@ -106,7 +109,9 @@
   .card { background: var(--slate); border-radius: 4px; margin: 8px 0; padding: 10px 14px 10px 16px; border-left: 5px solid var(--unguarded); animation: in .25s ease-out; }
   #pane-stock .card { background: #221820; }
   @keyframes in { from { opacity: 0; } }
-  .card .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .card .top { display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; min-width: 0; }
+  .card .top > *, .card .top::after { flex: none; }
+  .card .top > .tool { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* the stamp */
   .pill { font: 800 15px/1 var(--sans); letter-spacing: .08em; padding: 5px 9px 4px; border-radius: 3px;
           color: var(--unguarded); border: 2.5px solid currentColor; background: transparent; }
@@ -131,8 +136,8 @@
   @keyframes stamp { from { transform: rotate(-9deg) scale(1.7); opacity: 0; } }
   /* stock: a call outside the task that ran is the leak */
   #pane-stock .card.outside { background: #3a1820; border-left-color: var(--block); box-shadow: inset 0 0 0 2px rgba(255, 107, 107, .7); }
-  #pane-stock .card.outside .top::after { content: "RAN, NO GATE"; margin-left: auto; font: 800 14px/1 var(--sans); letter-spacing: .08em;
-    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; transform: rotate(2deg); }
+  #pane-stock .card.outside .top::after { content: "RAN, NO GATE"; margin-left: auto; font: 800 13px/1 var(--sans); letter-spacing: .08em;
+    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; white-space: nowrap; }
   #pane-stock .card.outside .tool { color: #ffd2d2; }
   /* in-task stock calls shrink to one line so the leaks stand out */
   #pane-stock .card:not(.outside) { padding: 6px 12px; margin: 5px 0; opacity: .8; }
@@ -203,7 +208,8 @@
   #bank.show { display: flex; }
   .bank-top { display: flex; align-items: center; gap: 16px; padding: 10px 22px; border-bottom: 1px solid var(--rule); }
   .bank-top h2 { margin: 0; font: 800 22px/1 var(--sans); letter-spacing: -.01em; white-space: nowrap; display: flex; align-items: center; gap: 10px; }
-  .bank-top .who { color: var(--muted); font-size: 14px; min-width: 0; }
+  .bank-top .who { color: var(--muted); font-size: 14px; min-width: 0; flex: 1 1 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bank-top > button, .bank-top .badge { flex: none; white-space: nowrap; }
   .bank-top .who code { font-family: var(--mono); color: var(--paper); }
   .bank-dial { display: flex; gap: 12px; align-items: center; padding: 12px 22px 10px; }
   .hold { width: 62px; height: 62px; border-radius: 50%; padding: 0; display: grid; place-items: center; flex: none; touch-action: none;
@@ -240,8 +246,8 @@
   #bank-stock .card:not(.leak) .pill { font-size: 12px; padding: 3px 6px 2px; border-width: 2px; }
   #bank-stock .card:not(.leak) .tool { font-size: 15.5px; }
   #bank-stock .card.leak { background: #3a1820; border-left-color: var(--block); box-shadow: inset 0 0 0 2px rgba(255, 107, 107, .7); }
-  #bank-stock .card.leak .top::after { content: "REACHED THE TOOL"; margin-left: auto; font: 800 14px/1 var(--sans); letter-spacing: .08em;
-    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; transform: rotate(2deg); }
+  #bank-stock .card.leak .top::after { content: "REACHED THE TOOL"; margin-left: auto; font: 800 13px/1 var(--sans); letter-spacing: .08em;
+    color: #fff; background: var(--block); padding: 5px 9px 4px; border-radius: 3px; white-space: nowrap; }
   #bank-stock .card.leak.moved .top::after { content: "MONEY MOVED, NO GATE"; }
   #bank-gated .card.v-BLOCK { background: linear-gradient(90deg, rgba(255, 107, 107, .13), var(--slate) 60%); }
   #bank-gated .card.v-BLOCK .pill { transform: rotate(-3deg); animation: stamp .35s cubic-bezier(.2, 1.6, .4, 1); }
@@ -322,7 +328,7 @@
     .bank-top .badge { white-space: normal; font-size: 12.5px; padding: 6px 9px; }
     #bank { overflow-y: auto; -webkit-overflow-scrolling: touch; }
     .bank-top { flex-wrap: wrap; gap: 6px 12px; padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top)); }
-    .bank-top h2 { font-size: 20px; } .bank-top .who { order: 3; flex-basis: 100%; }
+    .bank-top h2 { font-size: 20px; } .bank-top .who { order: 3; flex-basis: 100%; white-space: normal; }
     .bank-top .spacer { display: none; } #bank-close { order: 1; margin-left: auto; } .bank-top .badge { order: 2; }
     .bank-dial { padding: 12px 14px 10px; flex-wrap: wrap; }
     .hold { width: 72px; height: 72px; } .hold svg { width: 30px; height: 30px; }
@@ -344,7 +350,7 @@
 </head>
 <body>
 <header>
-  <h1><span class="mark" aria-hidden="true">CG</span>ClearGate <span>on-call agents, gated by AgntID</span></h1>
+  <h1><span class="mark" aria-hidden="true">CG</span>ClearGate <span>Agent: stock vs gated</span><em class="ex">Example: on-call incident</em></h1>
   <span class="spacer"></span>
   <span id="brain" class="line" title="Which model drives the agents"></span>
   <span id="lat" class="lat" title="Time the enforcement layer added per gated call, tool time excluded"></span>
@@ -387,11 +393,11 @@
 
 <main>
   <section class="pane" id="pane-stock">
-    <div class="pane-head"><h2>Stock agents, no gate</h2><span class="src">holds the PAT itself and calls MCP servers directly</span></div>
+    <div class="pane-head"><span class="eyebrow">Agent: stock</span><h2>No gate</h2><span class="src">holds the PAT itself and calls MCP servers directly</span></div>
     <div class="rows"><div class="empty">Waiting for a run. Speak or type the incident, or press <kbd>R</kbd> to replay the last signed record.</div></div>
   </section>
   <section class="pane" id="pane-gated">
-    <div class="pane-head"><h2 id="gated-title">Same agents, gated</h2><span class="src" id="gated-src"></span></div>
+    <div class="pane-head"><span class="eyebrow">Agent: gated</span><h2 id="gated-title">Same agents, gated</h2><span class="src" id="gated-src"></span></div>
     <div class="rows"><div class="empty">Same prompt, same agents, same MCP servers.</div></div>
   </section>
 </main>
@@ -400,7 +406,7 @@
 
 <div id="bank" role="dialog" aria-modal="true" aria-labelledby="bank-title">
   <div class="bank-top">
-    <h2 id="bank-title"><span class="mark" aria-hidden="true">CG</span>Call the bank</h2>
+    <h2 id="bank-title"><span class="mark" aria-hidden="true">CG</span>Agent: stock vs gated<em class="ex">Example: bank voice call</em></h2>
     <span class="who">You are the caller on <code id="bank-phone">+91-98123-45678</code>. One voice support agent, run twice: no gate on the left, gated on the right.</span>
     <span class="spacer"></span>
     <span id="bank-badge" class="badge standin">checking enforcer…</span>
@@ -418,12 +424,12 @@
   <section class="dtree" id="bank-dtree" aria-label="Delegation tree"><button class="dt-toggle" data-tree="bank-dtree" title="Show or hide the delegation tree (key T)">Delegation<kbd>T</kbd></button><span class="dt-sum"></span><div class="dt-body"><span class="dt-empty">The delegation tree fills in as the orchestrator hands work to sub-agents: each with its own visible tools and limits.</span></div></section>
   <div class="bank-panes">
     <section class="bpane" id="bank-stock">
-      <div class="pane-head"><h2>Stock voice agent, no gate</h2><span class="src">every tool visible, acts on what the caller says</span></div>
+      <div class="pane-head"><span class="eyebrow">Agent: stock</span><h2>No gate</h2><span class="src">every tool visible, acts on what the caller says</span></div>
       <div class="rows"><div class="empty">No call yet.</div></div>
       <div class="bfoot"></div>
     </section>
     <section class="bpane" id="bank-gated">
-      <div class="pane-head"><h2>Same agent, gated</h2><span class="src" id="bank-gated-src"></span></div>
+      <div class="pane-head"><span class="eyebrow">Agent: gated</span><h2>Gated</h2><span class="src" id="bank-gated-src"></span></div>
       <div class="rows"><div class="empty">Same caller, same agent, same bank tools.</div></div>
       <div class="bfoot"></div>
     </section>
@@ -516,7 +522,7 @@ function setBadge(source, replay) {
   b.textContent = (replay ? "REPLAY · " : "") + (agntid ? "AgntID runtime live" : "Local policy stand-in, not AgntID");
   b.className = "badge " + (replay ? "replay" : agntid ? "agntid" : "standin");
   b.title = `Decisions in the right pane come from: ${source || "unknown"}`;
-  $("gated-title").textContent = agntid ? "Same agents via AgntID" : "Same agents, local stand-in";
+  $("gated-title").textContent = agntid ? "Via AgntID" : "Local stand-in";
   $("gated-src").textContent = agntid ? "decisions by the AgntID runtime" : "decisions by the local policy stand-in (not AgntID)";
   document.querySelectorAll(".dname").forEach(n => n.textContent = agntid ? "AgntID" : "Local stand-in");
 }

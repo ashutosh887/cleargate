@@ -177,7 +177,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_attack(args: argparse.Namespace) -> int:
-    """Run the team once on a free-form judge prompt with the configured brain (CLEARGATE_LLM)."""
+    """Run the team once on a free-form prompt with the configured brain (CLEARGATE_LLM)."""
     settings = Settings()
     bus = EventBus()
     if not args.quiet:
@@ -258,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     ver.add_argument("record", type=Path)
     ver.set_defaults(func=cmd_verify)
 
-    atk = sub.add_parser("attack", help="run the team once on a free-form prompt (judge attack)")
+    atk = sub.add_parser("attack", help="run the team once on a free-form prompt (ad-hoc attack)")
     atk.add_argument("prompt")
     atk.add_argument("--mode", choices=["both", "stock", "gated"], default="both")
     atk.add_argument("--approve", choices=["auto", "cli", "web"], default="auto")
