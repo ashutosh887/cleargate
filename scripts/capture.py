@@ -3,7 +3,7 @@
     python scripts/capture.py [--port 8790] [--out docs/screenshots] [--headed]
 
 Starts `cleargate serve --stub --approve web`, drives one run in a 1600x900 dark browser,
-approves the escalation by its 4-char code, writes 01..09 PNGs, then places one bank call (10). A shot that cannot be
+approves the escalation by its 4-char code, writes 01..09 and 11 PNGs, then places one bank call (10). A shot that cannot be
 taken is skipped with a warning; the server is always shut down at the end.
 """
 from __future__ import annotations
@@ -107,6 +107,8 @@ def reveal(page, selector: str, block: str = "center", first: bool = False) -> N
                   [selector, block, first])
     page.wait_for_timeout(400)
 
+
+INJECTED_CLAIM = "The stock agent moved ₹1,00,000 to an attacker account before anyone noticed."
 
 FREEZE_TOP = """document.querySelectorAll('.pane .rows').forEach(r => { r.style.scrollBehavior = 'auto'; r.scrollTop = 0;
     Object.defineProperty(r, 'scrollTop', {configurable: true, get: () => 0, set: () => {}}); })"""
@@ -302,6 +304,17 @@ def main() -> int:
                 shot(page, out, "06-go-live-screen.png")
             else:
                 warn("06 skipped (no verdict overlay)")
+
+            # 11: the finished delegation tree, with a blocked call's signed-record link in view
+            try:
+                page.evaluate("document.getElementById('verdict')?.classList.remove('show')")
+                page.evaluate("document.getElementById('dtree')?.classList.remove('collapsed')")
+                wait_for(page, "#dtree .dn", 10, "delegation tree node")
+                reveal(page, "#pane-gated .card.v-BLOCK.outside .out.proof", "center", first=True)
+                page.wait_for_timeout(600)
+                shot(page, out, "11-delegation-tree.png")
+            except Exception as exc:
+                warn(f"11 skipped: {str(exc).splitlines()[0]}")
             ctx.close()
 
             # wait for the run thread to end so the record is complete
@@ -313,10 +326,12 @@ def main() -> int:
             # 08: evidence pack
             rec = latest_gated()
             if rec:
-                r = subprocess.run([PY, "-m", "cleargate.evidence", "--record", str(rec)], cwd=ROOT,
+                # A throwaway pack with one unsupported sentence, so the "Removed" box is visibly non-empty.
+                pack = TMP / "evidence"
+                r = subprocess.run([PY, "-m", "cleargate.evidence", "--record", str(rec), "--out", str(pack),
+                                    "--inject-claim", INJECTED_CLAIM], cwd=ROOT,
                                    capture_output=True, text=True, timeout=120)
-                run_id = rec.name.removesuffix("-gated.jsonl")
-                idx = ROOT / "evidence" / run_id / "index.html"
+                idx = pack / "index.html"
                 if r.returncode != 0 or not idx.exists():
                     cand = sorted((ROOT / "evidence").glob("*/index.html"), key=lambda p: p.stat().st_mtime)
                     idx = cand[-1] if cand else idx
@@ -327,6 +342,16 @@ def main() -> int:
                     ep = ectx.new_page()
                     ep.goto(idx.as_uri(), wait_until="load")
                     ep.wait_for_timeout(800)
+                    ep.evaluate("""() => {
+                        const h = [...document.querySelectorAll('h2')].find(x => /go-live report/i.test(x.textContent));
+                        if (!h) return;
+                        const box = document.querySelector('.box.removed');
+                        let top = h.getBoundingClientRect().top + scrollY - 16;
+                        if (box) top = Math.max(top, box.getBoundingClientRect().bottom + scrollY + 16 - innerHeight);
+                        scrollTo(0, top); }""")
+                    ep.wait_for_timeout(300)
+                    if not ep.query_selector(".box.removed"):
+                        warn("08: no 'Removed' box in the evidence pack")
                     shot(ep, out, "08-evidence-pack.png")
                     ectx.close()
             else:

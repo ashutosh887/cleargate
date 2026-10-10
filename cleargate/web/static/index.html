@@ -260,6 +260,43 @@
   .links a { color: var(--muted); }
   .links a.ok { color: var(--allow); }
   #bank .empty { font-size: 15px; }
+  /* live delegation tree: who handed work to whom, what each sub-agent can see, and how its calls were decided */
+  .dtree { display: flex; align-items: stretch; gap: 12px; padding: 6px 22px; border-bottom: 1px solid var(--rule); background: rgba(255, 255, 255, .015); min-height: 0; }
+  .dt-toggle { flex: none; align-self: center; padding: 5px 9px; font: 800 12px/1.1 var(--sans); font-stretch: 90%; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: transparent; }
+  .dt-toggle kbd { margin-left: 6px; }
+  .dt-body { flex: 1; display: flex; align-items: stretch; gap: 0; min-width: 0; overflow: hidden; }
+  .dtree.collapsed .dt-body { display: none; }
+  .dt-sum { align-self: center; color: var(--dim); font-size: 13.5px; display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dtree.collapsed .dt-sum { display: block; }
+  .dt-empty { align-self: center; color: var(--dim); font-size: 13.5px; }
+  .dt-user { align-self: center; flex: none; font: 600 12px/1.2 var(--mono); color: var(--muted); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dt-arrow { align-self: center; flex: none; color: var(--dim); padding: 0 6px; font-size: 14px; }
+  .dt-kids { display: flex; gap: 8px; min-width: 0; flex: 1; padding-left: 12px; border-left: 2px solid var(--rule); }
+  .dn { position: relative; flex: 1 1 0; min-width: 0; max-width: 300px; background: var(--slate); border-radius: 3px; padding: 4px 9px 5px; border-top: 3px solid var(--rule); transition: border-color .3s; }
+  .dt-path .dn, .dn.hub { flex: 0 1 auto; max-width: 210px; }
+  .dt-kids .dn::before { content: ""; position: absolute; left: -12px; top: 50%; width: 12px; height: 3px; margin-top: -1px; background: var(--rule); transition: background .3s; }
+  .dn.e-ALLOW { border-top-color: var(--allow); } .dn.e-ALLOW::before { background: var(--allow); }
+  .dn.e-NARROW { border-top-color: var(--narrow); } .dn.e-NARROW::before { background: var(--narrow); }
+  .dn.e-BLOCK { border-top-color: var(--block); } .dn.e-BLOCK::before { background: var(--block); }
+  .dn.e-ESCALATE { border-top-color: var(--escalate); } .dn.e-ESCALATE::before { background: var(--escalate); }
+  .dn.flash { animation: dnflash .9s ease-out; }
+  @keyframes dnflash { from { box-shadow: 0 0 0 3px rgba(238, 241, 246, .5); } }
+  .dn-h { display: flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; }
+  .dn-h b { font: 800 14.5px/1.2 var(--sans); }
+  .dn-c { font: 700 10.5px/1 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--narrow); border: 1px solid currentColor; border-radius: 2px; padding: 2px 4px 1px; }
+  .dn-dots { margin-left: auto; display: flex; gap: 2px; flex: none; }
+  .dn-dots i { width: 7px; height: 11px; border-radius: 1px; background: var(--unguarded); }
+  .dn-dots i.d-ALLOW { background: var(--allow); } .dn-dots i.d-BLOCK { background: var(--block); } .dn-dots i.d-ESCALATE { background: var(--escalate); } .dn-dots i.d-NARROW { background: var(--narrow); }
+  .dn-t { font: 12px/1.3 var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dn-t s { color: var(--dim); }
+  .dt-path { display: flex; align-items: stretch; flex: none; }
+  /* every outcome is a link */
+  .card .out { margin-top: 5px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: 12.5px/1.3 var(--mono); color: var(--dim); }
+  .card .out a { color: var(--allow); text-decoration: none; border-bottom: 1px dotted currentColor; }
+  .card .out.proof a { color: #ffc9c9; }
+  .card .out code { font-family: var(--mono); }
+  .card .out .stage { font-size: 10.5px; padding: 2px 5px 1px; }
+  #pane-stock .card:not(.outside) .out, #bank-stock .card:not(.leak) .out { display: none; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; } }
   @media (max-width: 1100px) { .strip { grid-template-columns: 1fr 1fr; } .beat.sign { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--rule); } header .line { display: none; } }
   @media (max-width: 900px) {
@@ -292,6 +329,7 @@
     .bfoot { padding: 10px 14px 14px; }
     .money b { font-size: 38px; }
     #bank .flow, #bank .flow.six { font-size: 11.5px; grid-template-columns: repeat(3, 1fr); }
+    .dtree { padding: 6px 14px; } .dt-body { overflow-x: auto; } .dn { min-width: 150px; }
   }
 </style>
 </head>
@@ -334,6 +372,8 @@
   </section>
 </div>
 
+<section class="dtree" id="dtree" aria-label="Delegation tree"><button class="dt-toggle" data-tree="dtree" title="Show or hide the delegation tree (key T)">Delegation<kbd>T</kbd></button><span class="dt-sum"></span><div class="dt-body"><span class="dt-empty">The delegation tree fills in as the orchestrator hands work to sub-agents: each with its own visible tools and limits.</span></div></section>
+
 <main>
   <section class="pane" id="pane-stock">
     <div class="pane-head"><h2>Stock agents, no gate</h2><span class="src">holds the PAT itself and calls MCP servers directly</span></div>
@@ -363,6 +403,7 @@
   </div>
   <div class="chips"><span id="bank-chips" class="chiplist"></span><span class="lang" id="bank-lang" hidden></span><span class="st" id="bank-st">Pick a call, hold the mic, or type.</span></div>
   <p class="visbeat" id="bank-vis"></p>
+  <section class="dtree" id="bank-dtree" aria-label="Delegation tree"><button class="dt-toggle" data-tree="bank-dtree" title="Show or hide the delegation tree (key T)">Delegation<kbd>T</kbd></button><span class="dt-sum"></span><div class="dt-body"><span class="dt-empty">The delegation tree fills in as the orchestrator hands work to sub-agents: each with its own visible tools and limits.</span></div></section>
   <div class="bank-panes">
     <section class="bpane" id="bank-stock">
       <div class="pane-head"><h2>Stock voice agent, no gate</h2><span class="src">every tool visible, acts on what the caller says</span></div>
@@ -483,6 +524,133 @@ function chainHtml(e) {
   return chain.map((c, i) => i === 0 ? `<b>${esc(c)}</b>` : esc(c)).join(" → ");
 }
 
+// Live delegation tree, built from the gated pane's delegation, visibility and call decisions.
+const trees = {};
+function treeNew(id) { trees[id] = { user: "", nodes: {}, order: [], hidden: new Set(), vis: null, calls: 0 }; treeDraw(id); return trees[id]; }
+function treeNode(t, name, parent) {
+  if (!t.nodes[name]) { t.nodes[name] = { name, parent, tools: [], cons: [], calls: [], last: "" }; t.order.push(name); }
+  else if (parent && !t.nodes[name].parent && parent !== name) t.nodes[name].parent = parent;
+  return t.nodes[name];
+}
+function treeFeed(id, e) {
+  const t = trees[id] || treeNew(id);
+  if (e.type !== "decision" || e.mode !== "gated") return;
+  const chain = [];
+  for (const c of e.delegation_chain || []) {
+    const name = String(c);
+    if (name.startsWith("user:")) { t.user = name.slice(5); continue; }
+    if (chain[chain.length - 1] !== name) chain.push(name);
+  }
+  chain.forEach((name, i) => treeNode(t, name, chain[i - 1] || ""));
+  const agent = chain[chain.length - 1] || e.agent;
+  if (!agent) return;
+  const n = treeNode(t, agent, chain[chain.length - 2] || "");
+  const m = e.meta || {};
+  let flash = false;
+  if (e.kind === "delegation") { if ((m.tool_allowlist || []).length) n.tools = m.tool_allowlist; n.cons = m.constraints || []; flash = true; }
+  else if (e.kind === "task_open") {
+    const b = m.before || {}, a = m.after || {};
+    t.vis = { before: b.visible_tools, after: a.visible_tools, narrowed: e.verb === "NARROW" };
+    if (m.visible && !n.tools.length) n.tools = m.visible;
+  } else if (e.kind === "notice" && /payment-task/.test(e.rule || "")) {
+    if (e.rule === "payment-task-not-opened") t.hidden.add("refund_to_account"); else t.hidden.delete("refund_to_account");
+  } else if (e.kind === "call" && e.verb) { n.calls.push(e.verb); n.last = e.verb; t.calls += 1; flash = true; }
+  else return;
+  treeDraw(id, flash ? agent : "");
+}
+function toolShort(x) { return String(x).replace(/^[a-z]+\./, ""); }
+function nodeHtml(t, n, flash) {
+  const tools = n.tools.map(x => { const s = toolShort(x); return t.hidden.has(s) ? `<s title="hidden: no payment task opened">${esc(s)}</s>` : esc(s); });
+  const label = n.tools.length ? `${n.tools.length} tool${n.tools.length > 1 ? "s" : ""}: ${tools.join(" · ")}`
+    : t.vis && !n.parent ? `tools visible ${esc(t.vis.before ?? "?")} → ${esc(t.vis.after ?? "?")}` : "plans and delegates";
+  const dots = n.calls.slice(-10).map(v => `<i class="d-${esc(v)}"></i>`).join("");
+  const title = `${n.name}${n.cons.length ? " · " + n.cons.join(", ") : ""}\n${n.tools.join("\n")}${n.calls.length ? `\n${n.calls.length} calls, last ${n.last}` : ""}`;
+  return `<div class="dn${n.last ? " e-" + esc(n.last) : ""}${flash === n.name ? " flash" : ""}" title="${esc(title)}">
+    <div class="dn-h"><b>${esc(n.name)}</b>${n.cons.map(c => `<span class="dn-c">${esc(c)}</span>`).join("")}<span class="dn-dots">${dots}</span></div>
+    <div class="dn-t">${label}</div></div>`;
+}
+function treeDraw(id, flash = "") {
+  const root = document.getElementById(id), t = trees[id];
+  if (!root || !t) return;
+  const body = root.querySelector(".dt-body"), sum = root.querySelector(".dt-sum");
+  const kids = name => t.order.filter(k => t.nodes[k].parent === name && k !== name);
+  const top = t.order.filter(k => !t.nodes[k].parent);
+  if (!top.length) {
+    body.innerHTML = `<span class="dt-empty">The delegation tree fills in as the orchestrator hands work to sub-agents: each with its own visible tools and limits.</span>`;
+    sum.textContent = ""; return;
+  }
+  const path = [top[0]];
+  while (kids(path[path.length - 1]).length === 1 && kids(kids(path[path.length - 1])[0]).length) path.push(kids(path[path.length - 1])[0]);
+  const hub = path[path.length - 1];
+  const below = [];
+  const walk = k => { for (const c of kids(k)) { below.push(c); walk(c); } };
+  walk(hub);
+  for (const k of top.slice(1)) { below.push(k); walk(k); }
+  body.innerHTML = (t.user ? `<span class="dt-user" title="${esc(t.user)}">${esc(t.user)}</span><span class="dt-arrow">→</span>` : "")
+    + `<div class="dt-path">${path.map((k, i) => (i ? `<span class="dt-arrow">→</span>` : "") + nodeHtml(t, t.nodes[k], flash)).join("")}</div>`
+    + (below.length ? `<span class="dt-arrow">→</span><div class="dt-kids">${below.map(k => nodeHtml(t, t.nodes[k], flash)).join("")}</div>` : "");
+  sum.textContent = `${path.join(" → ")} → ${below.length} sub-agent${below.length === 1 ? "" : "s"} · ${t.calls} calls decided`;
+}
+function treeToggle(id, force) {
+  const el = document.getElementById(id);
+  const on = force ?? !el.classList.contains("collapsed");
+  el.classList.toggle("collapsed", on);
+  try { localStorage.setItem("cg-tree", on ? "collapsed" : "open"); } catch (_) {}
+}
+document.querySelectorAll(".dt-toggle").forEach(b => b.onclick = () => { const c = !$(b.dataset.tree).classList.contains("collapsed"); treeToggle("dtree", c); treeToggle("bank-dtree", c); });
+try { if (localStorage.getItem("cg-tree") === "collapsed") { treeToggle("dtree", true); treeToggle("bank-dtree", true); } } catch (_) {}
+
+// Every outcome is a link: an allowed call opens the artefact it left, a blocked call opens its signed record line.
+const kq = sep => CG_KEY ? sep + "k=" + encodeURIComponent(CG_KEY) : "";
+const FAMILY_SETTING = { github: "github", payments: "postgres", comms: "slack" };
+function stubTool(tool, bank) {
+  const fam = String(tool || "").split(".")[0];
+  if (config.stub) return true;
+  if (bank && fam === "comms") return true;
+  return (config.tools || {})[FAMILY_SETTING[fam]] !== "live";
+}
+function artefactLabel(e) {
+  const tool = String(e.tool || ""), name = toolShort(tool), a = e.args || {}, pv = String(e.result_preview || "");
+  if (name === "create_pull_request") { const n = pv.match(/'number':\s*(\d+)|\/pull\/(\d+)/); return n ? `PR #${n[1] || n[2]}` : "pull request"; }
+  if (name === "merge_pull_request") return `PR #${a.pull_number ?? "?"} merged`;
+  if (name === "create_branch") return `branch ${a.branch || ""}`;
+  if (name === "create_or_update_file") { const c = pv.match(/:\s*([0-9a-f]{7,40})\s*$/); return c ? `commit ${c[1].slice(0, 7)}` : `file ${a.path || ""}`; }
+  if (name === "refund_to_account") { const u = pv.match(/CLGB[0-9A-F]+/); return u ? `refund row ${u[0]}` : "refund row"; }
+  if (name === "query_refunds") return `refund rows${a.order_id ? " · " + a.order_id : ""}`;
+  if (name === "get_order") return `order row${a.order_id ? " · " + a.order_id : ""}`;
+  if (name === "issue_refund") return "refund row";
+  if (/^post/.test(name)) { const c = pv.match(/'channel':\s*'([^']+)'/); return `${c ? c[1] : "channel"} message`; }
+  if (name === "send_email") return "email outbox line";
+  return "result";
+}
+function denialText(e) {
+  const m = e.meta || {};
+  const bits = [m.denial_step || e.denial_step ? `step ${m.denial_step || e.denial_step}` : "", m.policy_name ? `policy ${m.policy_name}` : "",
+    m.verdict_code ? `code ${m.verdict_code}` : "", m.intent_status ? `intent ${m.intent_status}` : ""].filter(Boolean);
+  if (/^agntid/i.test(String(e.source || ""))) return `AgntID denial${bits.length ? ": " + bits.join(" · ") : ""}${e.task_id ? ` · task ${String(e.task_id).slice(0, 8)}` : ""}`;
+  return `stand-in decision, no AgntID History entry${bits.length ? ": " + bits.join(" · ") : ""}`;
+}
+function outcomeHtml(e, bank) {
+  if (e.kind !== "call" || e.seq == null || !e.run_id) return "";
+  const run = encodeURIComponent(e.run_id), mode = encodeURIComponent(e.mode);
+  if (e.executed) {
+    const stub = stubTool(e.tool, bank);
+    return `<div class="out"><a href="/api/artefact/${run}/${mode}/${e.seq}${kq("?")}" target="_blank" rel="noopener" title="Open what this call left behind">${esc(artefactLabel(e))} ↗</a>`
+      + `${stub ? `<span class="stage sim" title="Local sandbox, not a real system">stub</span>` : ""}<span>record line ${esc(e.seq)}</span></div>`;
+  }
+  if (e.verb !== "BLOCK") return "";
+  const href = `/api/record/${run}/${mode}?seq=${e.seq}${kq("&")}#L${e.seq}`;
+  return `<div class="out proof"><a href="${href}" target="_blank" rel="noopener" title="Open this decision in the signed record">record line ${esc(e.seq)} · hash <code data-line="${esc(e.run_id)}/${esc(e.mode)}/${esc(e.seq)}">${e.hash ? esc(short(e.hash)) + "…" : "…"}</code> ↗</a><span>${esc(denialText(e))}</span></div>`;
+}
+function fillHashes(el) {
+  for (const c of el.querySelectorAll("code[data-line]")) {
+    if (c.textContent !== "…") continue;
+    const [run, mode, seq] = c.dataset.line.split("/");
+    fetch(`/api/record/${encodeURIComponent(run)}/${encodeURIComponent(mode)}/line/${seq}`).then(r => r.ok ? r.json() : null)
+      .then(j => { if (j?.hash) { c.textContent = short(j.hash) + "…"; c.title = j.hash; } }).catch(() => {});
+  }
+}
+
 // AgntID's five-step Runtime Enforcement Flow, and the control level that decides at each step.
 const FLOW = ["Intent Validation", "Policy Check", "Scoped Access", "Execute Tool Call", "Record Trace"];
 const LEVEL = ["Intent-Based Controls", "Parameter-Level Policies", "Tool Access Controls", "ClearGate approval layer, not AgntID-native", ""];
@@ -515,6 +683,7 @@ function decision(e) {
   const key = `${e.mode}:${e.seq}`;
   if (!panes[e.mode] || seen.has(key)) return;
   seen.add(key);
+  treeFeed("dtree", e);
   const s = stats[e.mode], m = e.meta || {};
   const div = document.createElement("div");
 
@@ -591,9 +760,11 @@ function decision(e) {
     ${agntBits.length ? `<div class="agntid">${esc(agntBits.join(" · "))}</div>` : ""}
     ${flag ? `<div class="flag">${esc(flag)}</div>` : ""}
     ${flowHtml(e, m)}
+    ${outcomeHtml(e, false)}
     ${isBypass ? `<div class="bypass"><b>Approval is not a bypass.</b> The engineer approved digest <code>${esc(code4(info.approvedDigest))}…</code>; these arguments hash to <code>${esc(code4(e.args_digest))}…</code>, so the call is blocked.</div>` : ""}
     <div class="meta"><span class="chain">${chainHtml(e)}</span>${e.args_digest ? `<span>digest ${esc(short(e.args_digest))}</span>` : ""}${e.approver ? `<span>approver ${esc(e.approver)}</span>` : ""}</div>`;
   append(e.mode, div);
+  fillHashes(div);
   if (e.verb === "ESCALATE") cards[`${e.mode}:${e.args_digest}`] = div;
 }
 
@@ -742,7 +913,7 @@ function showVerdict() {
     ${auto ? `<p class="bignote">Merge auto-approved: not a human. Rerun with a named engineer approving.</p>` : ""}
     <div class="vgrid">
       <ul class="checks">${checks}</ul>
-      <div class="evidence"><h4>Evidence for, not a compliance claim</h4><ul>${evidence().map(x => `<li>${x}</li>`).join("")}</ul>
+      <div class="evidence"><h4>Evidence for a review, not a compliance claim</h4><ul>${evidence().map(x => `<li>${x}</li>`).join("")}</ul>
         <div class="note">Evidence for these controls, not a compliance claim.</div></div>
     </div>
     ${s ? `<div class="compare">Same incident, stock agent: <b style="color:var(--block)">${esc(s.verdict || "NO-GO")}</b>. ${esc(s.counts?.outside_task_reached_tool ?? stats.stock.reached)} of ${esc(s.counts?.attempts_outside_task ?? stats.stock.outside)} out-of-task attempts reached a tool.</div>` : ""}
@@ -754,7 +925,7 @@ function handle(e) {
   if (e.type === "mode_start" && e.subject === "bank") bankRuns.add(e.run_id);
   if (e.type !== "run_start" && e.type !== "approval_resolved" && isBank(e)) { bankEvent(e); return; }
   switch (e.type) {
-    case "run_start": reset(); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
+    case "run_start": reset(); treeNew("dtree"); isReplay = !!e.replay; if (!isReplay) setBadge(config.enforcer === "agntid" ? "agntid" : "local"); $("start").disabled = true; break;
     case "mode_start": if (e.mode === "gated") setBadge(e.source, isReplay || e.replay); if (e.brain) { $("brain").textContent = brainLabel(e.brain); $("brain").title = e.brain; } break;
     case "decision": decision(e); break;
     case "approval_pending": approvalPending(e); break;
@@ -791,6 +962,7 @@ function bankRun(id) {
     bk.current = id;
     for (const m of ["stock", "gated"]) { const rows = $(`bank-${m}`).querySelector(".rows"); rows.innerHTML = ""; rows.classList.remove("settled"); }
     $("bank-vis").className = "visbeat"; $("bank-vis").innerHTML = "";
+    treeNew("bank-dtree");
     bankFoot("stock"); bankFoot("gated");
   }
   return bk.runs[id];
@@ -817,7 +989,7 @@ function bankEvent(e) {
   if (e.type === "decision" && r.events[e.mode]) {
     if (r.result?.decisions) return;
     r.events[e.mode].push(e);
-    if (r.id === bk.current) { const el = bankRow(e, r); if (el) bankAppend(e.mode, el); if (e.kind === "notice") bankVis(e); }
+    if (r.id === bk.current) { const el = bankRow(e, r); if (el) { bankAppend(e.mode, el); fillHashes(el); } if (e.kind === "notice") bankVis(e); treeFeed("bank-dtree", e); }
   } else if (e.type === "mode_done") {
     r.done[e.mode] = e;
     if (!r.result?.decisions) {
@@ -930,6 +1102,7 @@ function bankRow(e, r) {
       : `Reached the tool with no gate; only the bank's own payee check refused it${e.result_preview ? `: ${esc(trunc(e.result_preview, 90))}` : ""}`}</div>` : ""}
     ${tagsHtml(e, r)}
     ${bankFlow(e, r)}
+    ${outcomeHtml({ ...e, run_id: e.run_id || r.id }, true)}
     <div class="meta"><span class="chain">${chainHtml(e)}</span>${e.args_digest ? `<span>digest ${esc(short(e.args_digest))}</span>` : ""}</div>`;
   return div;
 }
@@ -977,14 +1150,16 @@ function bankFinish(j) {
   r.result = j;
   for (const mode of ["stock", "gated"]) {
     const fromResult = (j.decisions || []).filter(d => d.mode === mode).map(d => ({ ...d, run_id: j.run_id }));
-    if (fromResult.length > r.events[mode].length) r.events[mode] = fromResult;
+    if (fromResult.length > r.events[mode].length || (fromResult.length === r.events[mode].length && fromResult.every(d => d.hash))) r.events[mode] = fromResult;
     if (j.panes?.[mode]?.source) r.src[mode] = j.panes[mode].source;
   }
   if (j.panes?.gated) bankSource(j.panes.gated.source);
+  treeNew("bank-dtree");
+  for (const e of r.events.gated) treeFeed("bank-dtree", { type: "decision", ...e, mode: "gated" });
   for (const mode of ["stock", "gated"]) {
     const rows = $(`bank-${mode}`).querySelector(".rows");
     rows.innerHTML = ""; rows.classList.add("settled");
-    for (const e of r.events[mode]) { const el = bankRow(e, r); if (el) rows.appendChild(el); if (e.kind === "notice") bankVis(e); }
+    for (const e of r.events[mode]) { const el = bankRow(e, r); if (el) { rows.appendChild(el); fillHashes(el); } if (e.kind === "notice") bankVis(e); }
     if (!rows.children.length) rows.innerHTML = `<div class="empty">Not run in this mode.</div>`;
     const leak = rows.querySelector(".leak, .v-BLOCK");
     rows.scrollTop = leak ? leak.offsetTop - rows.offsetTop - 60 : 0;
@@ -1167,6 +1342,7 @@ $("verdict").onclick = ev => { if (ev.target.id === "verdict") $("verdict").clas
 document.addEventListener("keydown", k => {
   if (k.target.tagName === "INPUT") return;
   if (k.key === "Escape" && $("bank").classList.contains("show")) { bankOpen(false); return; }
+  if (k.key === "t" || k.key === "T") { $("dtree").querySelector(".dt-toggle").click(); return; }
   if (k.key === "b" || k.key === "B") { bankOpen(!$("bank").classList.contains("show")); return; }
   if ($("bank").classList.contains("show")) return;
   if (k.key === "g" || k.key === "G") showVerdict();

@@ -21,8 +21,10 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from cleargate.approval import verify_slack_signature
 from cleargate.bus import EventBus
 from cleargate.config import Settings
+from cleargate.durable import ReceiptError, announce_pending, approve_and_resume
 from cleargate.scenario import Run
 from cleargate.voice import SarvamVoice, VoiceUnavailable
+from cleargate.web.outcomes import enrich_decisions, install_outcome_routes
 
 STATIC = Path(__file__).parent / "static"
 # Set server-side: the browser never names who approved.
@@ -73,7 +75,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
+def create_app(approvals: str = "web", force_stub: bool = False, durable: bool = False) -> FastAPI:
     settings = Settings()
     bus = EventBus()
     app = FastAPI(title="ClearGate")
@@ -117,6 +119,8 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
             state["pending"].pop(event.get("id"), None)
 
     bus.listen(track)
+    if durable:
+        announce_pending(settings, bus)
 
     bank: dict[str, Any] = {"call": None, "lock": threading.Lock(), "hits": {}, "all": deque()}
 
@@ -128,7 +132,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         return bank["lock"].locked()
 
     def make_run(prompt: str | None) -> Run:
-        return Run(settings, bus, approvals=approvals, force_stub=force_stub, prompt=prompt or None)
+        return Run(settings, bus, approvals=approvals, force_stub=force_stub, prompt=prompt or None, durable=durable)
 
     @app.get("/")
     def index() -> FileResponse:
@@ -170,12 +174,17 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         transcript = str(body.get("transcript") or "")
         heard = spoken_code(transcript) or str(body.get("code") or "").lower()
         run = state["run"]
-        if run is None:
+        if run is None and not durable:
             raise HTTPException(404, "no run in progress")
         if not re.fullmatch(r"[0-9a-f]{4,}", heard):
             raise HTTPException(400, f"no digest code heard in {transcript!r}")
         if "reject" in transcript.lower():
             raise HTTPException(400, "say 'approve <code>'; use the Reject button to reject")
+        if durable:
+            try:
+                return approve_and_resume(settings, bus, VOICE_APPROVER, "voice", code=heard)
+            except ReceiptError as exc:
+                raise HTTPException(403, str(exc))
         if run.broker.resolve_by_code(heard, VOICE_APPROVER, "voice"):
             return {"ok": True, "code": heard, "via": "voice"}
         raise HTTPException(403, f"spoken code {heard!r} does not match exactly one pending approval digest")
@@ -185,6 +194,13 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         require_approver(request)
         run = state["run"]
         body = await request.json()
+        if durable:
+            try:
+                approve_and_resume(settings, bus, WEB_APPROVER, "web", receipt_id=approval_id,
+                                   approved=bool(body.get("approved")))
+            except ReceiptError as exc:
+                raise HTTPException(404, str(exc))
+            return {"ok": True}
         if run is None or not run.broker.resolve(approval_id, bool(body.get("approved")), WEB_APPROVER, "web"):
             raise HTTPException(404, "no pending approval with that id")
         return {"ok": True}
@@ -266,7 +282,13 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         user = payload.get("user", {})
         approver = f"slack:{user.get('username') or user.get('name') or user.get('id', 'unknown')}"
         run = state["run"]
-        if run is not None:
+        if durable:
+            try:
+                approve_and_resume(settings, bus, approver, "slack", receipt_id=action["value"],
+                                   approved=action["action_id"] == "cleargate_approve")
+            except ReceiptError as exc:
+                return {"text": f"Not recorded: {exc}"}
+        elif run is not None:
             run.broker.resolve(action["value"], action["action_id"] == "cleargate_approve", approver, "slack")
         return {"text": f"Recorded: {'approved' if action['action_id'] == 'cleargate_approve' else 'rejected'} by {approver}"}
 
@@ -405,8 +427,9 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
             call = await run_in_threadpool(bank_call)
             # ESCALATEs on the bank line resolve through the existing approval routes.
             state["run"] = SimpleNamespace(broker=call.broker, run_id="bank")
-            return await run_in_threadpool(lambda: run_call(said, mode=mode, phone=phone, stub=force_stub, speak=True,
-                                                            language=language, call=call))
+            result = await run_in_threadpool(lambda: run_call(said, mode=mode, phone=phone, stub=force_stub, speak=True,
+                                                              language=language, call=call))
+            return enrich_decisions(result, settings)
         finally:
             if state["run"] is not None and getattr(state["run"], "run_id", None) == "bank":
                 state["run"] = previous
@@ -499,6 +522,7 @@ def create_app(approvals: str = "web", force_stub: bool = False) -> FastAPI:
         path = bank_record_path(name)
         return {"record": name, "verified": verify_record(path), "offline": f"python verify.py records/{name}"}
 
+    install_outcome_routes(app, settings, require_approver, force_stub)
     return app
 
 
