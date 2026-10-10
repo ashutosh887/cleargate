@@ -86,6 +86,15 @@ rules:
     verb: ALLOW
     reason: "Data minimisation (DPDP Act s.6, RBI data-localisation hygiene): bounded refund reads, limit 1-100"
 
+  # Parameter-Level Policy, mirrors the portal limit query_refunds.limit 1-100. Placed right after the
+  # bounded read so an oversized limit is stopped by this rule and its reason, not by `default`.
+  - id: database-refunds-over-limit
+    tools: [payments.query_refunds]
+    where:
+      limit: { not_matches: '^(|100|[1-9][0-9]?)$' }
+    verb: BLOCK
+    reason: "Parameter limit (DPDP Act s.6 purpose limitation): query_refunds.limit must be 1-100; one order's duplicates need dozens of rows, not the ledger"
+
   - id: database-reads-orders
     agents: [database, db]
     tools: [payments.get_order]
@@ -157,7 +166,7 @@ rules:
     tools: [payments.get_statement]
     where: { customer_id: { equals: "${customer_id}" } }
     verb: ALLOW
-    reason: "Scoped credential: the statement read covers this customer's prefix only"
+    reason: "DPDP purpose limitation: the statement read is bound to the verified caller's customer_id (ClearGate session binding)"
 
   - id: bank-refund-within-cap
     agents: [payments]

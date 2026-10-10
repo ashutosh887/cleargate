@@ -24,7 +24,7 @@ The runtime allows or denies; it does not hold a pending human approval. We buil
 
 ## 5. LLM intent needs a separate credential
 
-Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential (we used Anthropic). Mode used for the final run: [engine confirmed on the day].
+Standard intent (the portal label; the deck calls it ML-based, semantic evaluation) works out of the box but is less accurate. LLM-based intent needs an OpenAI credential on the runtime. The Simulator needs its own LLM credential; we have not run it. Mode used for the final run: [engine confirmed on the day].
 
 ## 6. Parameter policies are numeric
 
@@ -40,7 +40,7 @@ The intent parser downloads a model of about 900 MB on first start (per the comp
 
 ## 9. Deterministic demo vs real LLM
 
-LLM agents do not attack the same way every run. The scripted brain (`CLEARGATE_LLM=scripted`) follows the injection on every run, so stock vs gated is repeatable on stage; the Bedrock or Anthropic brain is available for free-form attacks (`cleargate attack "<prompt>"`).
+LLM agents do not attack the same way every run. The scripted brain (`CLEARGATE_LLM=scripted`) follows the injection on every run, so stock vs gated is repeatable on stage; for free-form attacks (`cleargate attack "<prompt>"`) the brain that has quota today is Gemini through the OpenAI-compatible API (`CLEARGATE_LLM=openai`). The Bedrock and Anthropic brains are in the code but had no usable quota on the day.
 
 ## 10. Honest labelling
 

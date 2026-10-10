@@ -39,7 +39,7 @@ CLEARGATE_SLACK=stub                 # or live with SLACK_BOT_TOKEN
 DATABASE_URL=postgresql://postgres:cleargate@localhost:5432/payments
 GITHUB_REPO=ashutosh887/cleargate      # issue #1; the service is fixtures/payments-api/
 CLEARGATE_ISSUE=1
-CLEARGATE_LLM=scripted               # deterministic on stage; bedrock or anthropic for free-form attacks
+CLEARGATE_LLM=scripted               # deterministic on stage; openai (Gemini, OpenAI-compatible) for free-form attacks
 ```
 
 Checks (all should pass before the demo):

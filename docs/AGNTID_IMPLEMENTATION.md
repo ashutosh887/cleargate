@@ -38,7 +38,7 @@ Seven AgntID controls and one ClearGate layer. The rows that change this run's o
 | 7 | Task close ends authority | SDK: `send_task_open_details`, `send_task_close` | Access exists only while the task is open | A call after close is denied | Just-for-task access |
 | A | **ClearGate layer (app layer, not AgntID-native):** approval bound to the args digest | Access Control, Tools / policy for the runtime side | `policy.yaml` marks the merge ESCALATE; ClearGate binds the engineer's approval to the SHA-256 digest of the exact arguments and re-sends the call through the runtime, which makes the final decision | Merge waits for the engineer; a merge retried with different arguments is blocked by ClearGate because the approval digest no longer matches | RBI IT governance: change management, maker-checker |
 
-Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator; Anthropic credential) checks policies before the live run, and **Reporting** lists the runtime's ALLOW and BLOCK decisions. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
+Validation, not controls: the portal **Simulator** (Observe & Validate, Simulator) can check policies before the live run, and **Reporting** shows the runtime's ALLOW and BLOCK decisions. Neither has been used for this project yet: [screenshot once done]. ESCALATE and approval lines are ClearGate's and appear only in its signed record.
 
 Every rule above also appears in `policy.yaml` with its reason, so the offline stand-in behaves the same way. The two are kept in sync by hand.
 

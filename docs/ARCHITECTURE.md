@@ -129,7 +129,7 @@ ClearGate blocks the retried merge: the agent changes the merge method and title
 
 ## The signed record and Audit & Replay
 
-The runtime's own Record Trace and Audit / Telemetry live in AgntID Reporting. ClearGate's record adds the ESCALATE and approval lines, signs every line, and `cleargate replay` / `cleargate diff` re-run recorded calls under a changed policy.
+The runtime's own Record Trace and Audit / Telemetry live in AgntID Reporting once the runtime is linked; we have no Reporting data yet. ClearGate's record adds the ESCALATE and approval lines, signs every line, and `cleargate replay` / `cleargate diff` re-run recorded calls under a changed policy.
 
 One JSONL file per run and mode, `records/<run>-<mode>.jsonl`.
 
