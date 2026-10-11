@@ -5,7 +5,7 @@
 #   scripts/live_all.sh --stub   dry run on the local stand-in; every number is labelled STUB
 #
 # Each step logs to records/live-<ts>/, every new signed record is checked with verify.py,
-# and submission/live-numbers.md gets the command, exit code, key output and record path per step.
+# and $OUT/summary.md gets the command, exit code, key output and record path per step.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PY=.venv/bin/python
@@ -18,7 +18,7 @@ OUT=records/live-$TS
 mkdir -p "$OUT"
 STAMP=$OUT/.start
 touch "$STAMP"
-SUMMARY=submission/live-numbers.md
+SUMMARY=$OUT/summary.md
 mkdir -p "$(dirname "$SUMMARY")"
 
 if [ "$MODE" = live ]; then

@@ -58,9 +58,9 @@ Every rule above also appears in `policy.yaml` with its reason, so the offline s
 11. Inspector, List Tools; call `payments_issue_refund` with `amount_inr=6000`; expect a denial.
 12. Simulator run, then Reporting.
 
-## Bonus items, where each one is shown
+## Where each capability is shown
 
-| Bonus item | Control | Where to see it |
+| Capability | Control | Where to see it |
 |---|---|---|
 | Different authority per agent | 6, delegations | One `send_delegation_open` per hand-off (`cleargate/agents/team.py`, `cleargate/bank/team.py`); DELEGATION record lines with each sub-agent's allowlist; `docs/screenshots/11-delegation-tree.png`. Triage, db and the bank's accounts agent are read-only |
 | Human approval | A (ClearGate layer) | Merge ESCALATE, voice approval on `/oncall`, digest-bound re-send; `docs/screenshots/04-escalate-card.png`, `05-not-a-bypass.png`, `07-oncall-phone.png` |

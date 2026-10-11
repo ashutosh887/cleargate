@@ -222,7 +222,7 @@ bank:
   refund_cap_inr: 5000
   # Monthly ceiling per customer, next to the per-call cap: refunds credited this month plus this one must
   # stay within it. A per-call Parameter-Level Policy sees one call's arguments, not the month's total, so the
-  # stand-in simulates it from the ledger and labels it; see submission/portal-clickpath.md 6c.
+  # stand-in simulates it from the ledger and labels it.
   monthly_refund_ceiling_inr: 15000
   monthly_refund_ceiling_reason: "UPI-style monthly limit: an agent may refund at most INR 15,000 per customer per month; more needs a branch"
   visible_before_payment_task:

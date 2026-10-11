@@ -4,29 +4,17 @@ __pycache__/
 .env
 .cleargate/
 records/*.jsonl
+records/*.json
 !records/.gitkeep
 records/replays/
 records/live-*/
 records/signing_pub.pem
 scratch/
-BUILD_PLAN.md
-agntid-context.md
-agntid-docs.zip
-agntid-docs/
-records/*.json
-
-# private prep notes and internal docs (never publish)
-PROJECT.md
-AGNTID_SDK_NOTES.md
-submission/
-
-# AgntID login-only docs, any spelling
-agntid-context*.md
-agntid-docs*
 
 # generated run output (curated samples go in examples/)
 evidence/
 policies/proposed-*
+policies/evolved-*
 
 # local state, logs, OS files
 *.log
@@ -35,14 +23,7 @@ policies/proposed-*
 *.egg-info/
 dist/
 build/
-policies/evolved-*
-AGENT_BRIEF*.md
-*.pdf
-NEXT_SESSION.md
 
 # vendored copy for the site function (scripts/build_site_api.sh)
 site/api/_lib/
 docs/audio/
-
-# internal pre-submission checks (write to private notes)
-scripts/verify_all.*

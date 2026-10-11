@@ -85,19 +85,9 @@ The table is for runs through the AgntID runtime. `scripts/live_all.sh` runs the
 | Bank campaign, destination allow-list set in the portal | `PAYEE_CHECK=off cleargate bank --campaign --seed 7` | not run |
 | Added latency per tool call, p50 / p95 | `cleargate bench --target agntid --n 30` | not run |
 
-## Rubric sections
-
-| Rubric line (weight) | Proof |
-|---|---|
-| [Real-World Agent Use Case (15%)](#real-world-agent-use-case-15) | [`cleargate/bank/`](cleargate/bank/), [`cleargate/agents/team.py`](cleargate/agents/team.py), [issue #1](https://github.com/ashutosh887/cleargate/issues/1) |
-| [Real-World AgntID Relevance (15%)](#real-world-agntid-relevance-15) | `reason:` on every rule in [`policy.yaml`](policy.yaml) |
-| [Depth of AgntID Usage (25%)](#depth-of-agntid-usage-25) | [depth table](#how-agntid-decides), [`cleargate/agntid_enforcer.py`](cleargate/agntid_enforcer.py), [`docs/coverage.html`](docs/coverage.html) |
-| [Technical Execution & Before/After Proof (20%)](#technical-execution--beforeafter-proof-20) | `cleargate check --stub`, `python verify.py examples/stub-gated.jsonl`, [PR #3](https://github.com/ashutosh887/cleargate/pull/3) |
-| [Demo & Communication (25%)](#demo--communication-25) | [Try a call](https://trycleargate.vercel.app/try), [demo video](https://youtu.be/dyquPYa9eCk), [`docs/DEMO.md`](docs/DEMO.md), [`docs/screenshots/`](docs/screenshots/) |
-
 [`llms.txt`](llms.txt) is a plain-text summary of this README.
 
-### Real-World Agent Use Case (15%)
+## Why a bank voice agent
 
 Banks put voice agents on phone lines for customers who can't or won't use the app, often elderly callers or people who prefer an Indian language. On 10 Sep 2026 Indian Bank launched AI-TARA, which does fund transfers, IMPS and fixed deposits by voice in 10 languages ([Analytics Insight, 11 Sep 2026](https://www.analyticsinsight.net/news/indian-bank-debuts-ai-tara-voice-banking-in-10-languages-at-global-fintech-fest-2026)). The voice on the line can't be trusted: 47% of Indian adults have been a victim of an AI voice-clone scam or know one (a 2025 survey cited by [ORF, Jan 2026](https://orfonline.org/research/deepfakes-and-financial-cybercrime-india-s-multi-layered-response)). UPI fraud in FY24 was 13.42 lakh incidents and ₹1,087 crore ([Lok Sabha unstarred question 2481, 15 Dec 2025](https://eparlib.sansad.in/bitstream/123456789/3018042/1/AU2481_5bIzKk.pdf)). So authority has to live in the runtime, not in what the caller says.
 
@@ -105,7 +95,7 @@ A prompt is not enough. AgntID's own research found that an orchestrator told "d
 
 The coding team's attack is a documented incident class: in May 2025 a malicious public GitHub issue led an agent using the GitHub MCP server to leak private repository contents ([incident index](https://www.upguard.com/blog/mcp-security-incidents)).
 
-### Real-World AgntID Relevance (15%)
+## Why these rules
 
 Every rule in `policy.yaml` carries the reason a bank would give (the depth table above). Two need a word more:
 
@@ -114,7 +104,7 @@ Every rule in `policy.yaml` carries the reason a bank would give (the depth tabl
 
 The bank policy also has a ₹15,000 monthly refund ceiling per customer, which only the stand-in enforces, because it needs the month's total rather than one call's arguments. The PCI DSS, DPDP and RBI mappings are evidence for a review, not a compliance claim.
 
-### Depth of AgntID Usage (25%)
+## AgntID depth
 
 - Seven AgntID controls plus one ClearGate layer, one row each in the [depth table](#how-agntid-decides).
 - Tools visible at task start: 49 → 11. GitHub tools: 41 → 7. Tool-schema context: 3,045 → 770 tokens.
@@ -123,7 +113,7 @@ The bank policy also has a ₹15,000 monthly refund ceiling per customer, which 
 - `cleargate evolve` automates AgntID's Simulate & Test step. Against our earlier branch rule, generation 2 found 5 spellings of `main` that got past it (`MAIN`, `Main`, `heads/main`, `refs/heads/main`, `refs/heads/master`). We normalised the ref; the re-run found 0 gaps in 585 cases over 6 generations ([Appendix D](#appendix-d-the-gate-that-evolves)).
 - SDK flow in [`cleargate/agntid_enforcer.py`](cleargate/agntid_enforcer.py): task open, one delegation per hand-off, wrapped calls, `get_last_denial` parsing, task close.
 
-### Technical Execution & Before/After Proof (20%)
+## Before and after
 
 Coding team, `cleargate check --stub`:
 
@@ -143,7 +133,7 @@ Stock counts 8 attempts and gated 7 because the agent's first merge is out of ta
 - Policy diff (`cleargate diff --policy policy.tight.yaml`): 2 of 20 recorded calls flip, matched on the canonical arguments digest.
 - Tamper test: edit any field in a `.jsonl` record and `verify.py` prints the first mismatching line. It proves the record has not changed since it was signed, not that the signer was honest.
 
-### Demo & Communication (25%)
+## Demo
 
 - [Try a call](https://trycleargate.vercel.app/try): type or speak a caller's line in English or Hinglish. Stock and gated play side by side with the decision and rule for every call, and the page shows each signed record only after it verifies. Agents are scripted by default; a live Gemini model is optional. Decisions come from the local stand-in.
 - The gated agent says its refusal out loud: "I can't send money to a new account over the phone; that needs a branch visit. I've flagged this to our operations team." The Hinglish caller hears it in Hindi.
@@ -246,7 +236,7 @@ The earlier `never-write-to-main` rule compared the branch as a raw string. Gene
 
 ## Appendix F: more docs
 
-- [`docs/AGNTID_IMPLEMENTATION.md`](docs/AGNTID_IMPLEMENTATION.md): portal settings, SDK calls, click-path, bonus items.
+- [`docs/AGNTID_IMPLEMENTATION.md`](docs/AGNTID_IMPLEMENTATION.md): portal settings, SDK calls, click-path, where each capability is shown.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): components, trust boundaries, per-call sequence, repository map.
 - [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md): attack classes, OWASP ids, who enforces what.
 - [`docs/RUNTIME_PROOF.md`](docs/RUNTIME_PROOF.md): the live runtime checklist.
