@@ -6,3 +6,4 @@ openai>=1.40
 pyyaml>=6
 psycopg[binary]>=3.2
 fastmcp>=2.14,<3
+boto3>=1.35

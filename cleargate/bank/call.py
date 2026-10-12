@@ -340,7 +340,9 @@ def run_call(text_or_audio: str | bytes, mode: str = "both", phone: str = DEFAUL
     decisions = [_brief(e) for e in call.bus.history[start:] if e.get("type") == "decision"]
     reply = panes.get("gated", panes[modes[0]])["reply_text"]
     audio = None
-    if speak and speaker.enabled:
+    if speak and not speaker.enabled:
+        notes.append(f"{type(speaker).__name__} is off: Polly needs AWS credentials, Sarvam needs SARVAM_API_KEY")
+    elif speak:
         try:
             audio = base64.b64encode(speaker.tts(reply, language)).decode("ascii")
         except VoiceUnavailable as exc:
