@@ -23,6 +23,7 @@ We built two agent teams, a bank voice support agent and a coding agent team, th
 | Replay and diff | `cleargate/replay.py` | Re-runs recorded calls under a policy; reports which flip under a new one. |
 | Web UI | `cleargate/web/app.py`, `cleargate/web/static/index.html` | Split screen, live event stream (`/events`), the `/oncall` phone page, voice approval fallback (`/api/approvals/voice`). |
 | Voice | `cleargate/voice/sarvam.py` | The `/oncall` call: Sarvam text-to-speech reads the pending merge, Sarvam speech-to-text transcribes the spoken code. |
+| Reply voice | `cleargate/voice/polly.py` | With `CLEARGATE_TTS=polly`, Amazon Polly speaks the bank agent's reply in `cleargate bank --speak` (Kajal, neural, `hi-IN` and `en-IN`, 16 kHz WAV). Uses the AWS credential chain; without credentials the call prints a note and stays silent. Sarvam is the default. |
 | Attack suite | `cleargate/attacks/suite.py`, `attacks/catalog.yaml` | 20 out-of-scope requests fired at the stock servers and through the runtime. |
 | Policy writer | `cleargate/policywriter.py` | AgntID's Runtime Operator Workflow, automated: Auto-Discover from a signed record → Define Policies → Simulate & Test (shadow replay with the stand-in evaluator) → Enforce (applied in the portal by hand) → Audit & Replay. |
 | Policy fuzzer | `cleargate/evolve/` | `cleargate evolve` mutates every attack the policy stopped and keeps what gets through; survivors go to `attacks/evolved.json`, which the CI gate re-runs. Deterministic, no LLM. |

@@ -170,7 +170,7 @@ jobs:
 
 | Agent | Job | Tools | Authority |
 |---|---|---|---|
-| voice | Takes the caller's words (text, or audio through Sarvam speech-to-text with `--audio`) and replies | `payments.get_customer` | the caller's own record, by caller ID |
+| voice | Takes the caller's words (text, or audio through Sarvam speech-to-text with `--audio`) and replies, spoken by Sarvam or, with `CLEARGATE_TTS=polly`, by Amazon Polly | `payments.get_customer` | the caller's own record, by caller ID |
 | accounts | Reads the account and the failed payment | `get_account`, `get_failed_payment` | read-only, scoped to the verified caller |
 | statements | Reads a statement on request | `get_statement` | read-only, scoped to the verified caller |
 | payments | Refunds the failed debit | `refund_to_account` | hidden until a payment task opens; ₹1 to ₹5,000; destination on file |

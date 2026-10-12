@@ -46,6 +46,8 @@
   <tbody>
     <tr><td><a href="https://agntid.ai/">AgntID</a></td><td>The customer-hosted runtime and portal that make every Runtime Access Decision. We call it through the <a href="https://github.com/AGNTID-AI/agntid-python">agntid Python SDK</a>.</td></tr>
     <tr><td><a href="https://www.sarvam.ai/apis/text-to-speech">Sarvam AI</a></td><td>Text-to-speech for the caller voices and the on-call phone, speech-to-text for the engineer's spoken approval. English and Hindi.</td></tr>
+    <tr><td><a href="https://aws.amazon.com/polly/">Amazon Polly</a></td><td>Speaks the bank agent's reply with <code>CLEARGATE_TTS=polly</code>: the Kajal neural voice, in Hindi and Indian English.</td></tr>
+    <tr><td><a href="https://aws.amazon.com/bedrock/">Amazon Bedrock</a></td><td>An optional model for live agent runs (<code>CLEARGATE_LLM=bedrock</code>) through the Converse API, with a fallback model when the first is throttled.</td></tr>
     <tr><td><a href="https://ai.google.dev/gemini-api/docs">Gemini API</a></td><td>The model behind live agent runs, through its OpenAI-compatible endpoint. The stage run uses a scripted agent.</td></tr>
     <tr><td><a href="https://gofastmcp.com/">FastMCP</a></td><td>Our <code>payments</code> and <code>comms</code> MCP servers that sit behind the runtime.</td></tr>
     <tr><td><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></td><td>How every agent reaches every tool, so the runtime can sit in between.</td></tr>
