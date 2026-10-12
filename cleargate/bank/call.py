@@ -317,9 +317,11 @@ def run_call(text_or_audio: str | bytes, mode: str = "both", phone: str = DEFAUL
              speak: bool = True, language: str | None = None, call: Call | None = None,
              audio_type: str = "audio/webm") -> dict[str, Any]:
     """One caller turn → {transcript, language, decisions[], reply_text, reply_audio, panes}."""
+    from cleargate.voice.polly import reply_voice
     from cleargate.voice.sarvam import SarvamVoice, VoiceUnavailable
 
     voice = SarvamVoice()
+    speaker = reply_voice()
     notes: list[str] = []
     if isinstance(text_or_audio, bytes):
         try:
@@ -338,9 +340,9 @@ def run_call(text_or_audio: str | bytes, mode: str = "both", phone: str = DEFAUL
     decisions = [_brief(e) for e in call.bus.history[start:] if e.get("type") == "decision"]
     reply = panes.get("gated", panes[modes[0]])["reply_text"]
     audio = None
-    if speak and voice.enabled:
+    if speak and speaker.enabled:
         try:
-            audio = base64.b64encode(voice.tts(reply, language)).decode("ascii")
+            audio = base64.b64encode(speaker.tts(reply, language)).decode("ascii")
         except VoiceUnavailable as exc:
             notes.append(str(exc))
     return {"run_id": run_id, "transcript": transcript, "language": language, "decisions": decisions,
@@ -383,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--approve", choices=["auto", "cli", "none"], default=None,
                         help="checker for escalations (default auto; --campaign defaults to none, unattended)")
     parser.add_argument("--stub", action="store_true", help="in-process SQLite bank, no MCP servers")
-    parser.add_argument("--speak", action="store_true", help="synthesise the reply with Sarvam TTS (costs credits)")
+    parser.add_argument("--speak", action="store_true", help="speak the reply (Sarvam TTS, or Amazon Polly with CLEARGATE_TTS=polly)")
     parser.add_argument("--save-audio", type=Path, help="write the reply WAV here")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--campaign", action="store_true",

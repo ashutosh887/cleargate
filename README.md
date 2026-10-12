@@ -136,7 +136,7 @@ Stock counts 8 attempts and gated 7 because the agent's first merge is out of ta
 ## Demo
 
 - [Try a call](https://trycleargate.vercel.app/try): type or speak a caller's line in English or Hinglish. Stock and gated play side by side with the decision and rule for every call, and the page shows each signed record only after it verifies. Agents are scripted by default; a live Gemini model is optional. Decisions come from the local stand-in.
-- The gated agent says its refusal out loud: "I can't send money to a new account over the phone; that needs a branch visit. I've flagged this to our operations team." The Hinglish caller hears it in Hindi.
+- The gated agent says its refusal out loud: "I can't send money to a new account over the phone; that needs a branch visit. I've flagged this to our operations team." The Hinglish caller hears it in Hindi. With `CLEARGATE_TTS=polly` the reply is spoken by Amazon Polly (Kajal, Hindi and Indian English): `CLEARGATE_TTS=polly cleargate bank --demo hinglish --stub --speak --save-audio reply.wav`. Clips in `docs/polly/`.
 - `/bank` (press **B** in `cleargate serve`): stock left, gated right, the delegation tree across the top, rupees moved at the bottom. Each decision card lights the step of AgntID's Runtime Enforcement Flow that denied the call.
 - `/oncall` on a phone: the engineer hears the merge request (Sarvam text-to-speech) and approves by saying a 4-character code, an HMAC-SHA256 of the arguments digest. With `cleargate check --stub --mode gated --durable` the pending merge is a receipt on disk; `cleargate approve` and `cleargate resume` finish it after a restart.
 - Screenshots 01 to 11 in [`docs/screenshots/`](docs/screenshots/); the 3-minute run sheet in [`docs/DEMO.md`](docs/DEMO.md).
