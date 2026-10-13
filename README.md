@@ -9,6 +9,7 @@ We built a voice support agent for a bank's failed-payment line. It takes calls 
 - Site: https://trycleargate.vercel.app
 - Place a call in your browser: https://trycleargate.vercel.app/try
 - Demo video: https://youtu.be/dyquPYa9eCk
+- Article on AWS Builder Center: https://builder.aws.com/content/3KagIAlFGybK52DClpI7uarogyp/a-bank-voice-agent-that-tells-you-what-to-do-when-it-says-no
 
 | Bank campaign, seed 7 (local stand-in, not AgntID) | Stock agent | Agent behind the gate |
 |---|---|---|
